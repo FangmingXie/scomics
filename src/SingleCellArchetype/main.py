@@ -5,16 +5,15 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from utils import *
+from .utils import *
 
-class SingleCellArchetype():
+class SCA():
     """
     """
-    def __init__(self, x, depths, types):
+    def __init__(self, norm_mat, types):
         """
         Arguments: 
-            x - cell by gene count matrix
-            depths - sequencing depth per cell
+            norm_mat - cell by gene feature matrix (depth normalized)
             types  - cell type labels per cell
         
         Initiate the SingleCellArchetype object
@@ -22,8 +21,7 @@ class SingleCellArchetype():
         """
         
         # input
-        self.x = x
-        self.depths = depths
+        self.xn = norm_mat
         self.types = types
         
         # cell type label
@@ -32,10 +30,7 @@ class SingleCellArchetype():
         self.types_idx = types_idx
         self.types_lbl = types_lbl 
         
-        # normalize
-        self.xn = norm(self.x, self.depths)
-        
-        # feature matrix 
+        # feature matrix (init as the data - rather than shuffled)
         self.xf = self.xn 
         return 
         
@@ -78,15 +73,28 @@ class SingleCellArchetype():
         self.aa = aa
         return (xp, aa)
         
-    def downsamp_proj_pcha(self, ndim, noc, nrepeats=10, which='cell', p=0.8, 
-                           preserve_embedding_sign=True, **kwargs): 
+    def bootstrap_proj_pcha(self, ndim, noc, nrepeats=10, which='cell',
+                           is_bootstrap=True,
+                           downsamp_p=None,
+                           preserve_embedding_sign=True, 
+                           seed=0,
+                           **kwargs): 
+        """bootstrap or downsample (with a specified p)
         """
-        """
+        if seed is not None:
+            np.random.seed(seed)
+
         xp0 = proj(self.xf, ndim)
         
         aa_dsamps = []
         for i in range(nrepeats):
-            xn_dsamp, cond_dsamp = downsamp(self.xf, which=which, p=p, return_cond=True)
+            xn_dsamp, cond_dsamp = bootstrap_or_downsamp(
+                                    self.xf, 
+                                    which=which, 
+                                    is_bootstrap=is_bootstrap,
+                                    downsamp_p=downsamp_p, 
+                                    return_cond=True)
+
             xp_dsamp = proj(xn_dsamp, ndim)
             
             # match sign

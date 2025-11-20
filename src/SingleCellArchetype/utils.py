@@ -87,7 +87,56 @@ def downsamp(x, which='cell', p=0.8, seed=None, return_cond=False):
         return xout, cond
     else:
         return xout
-        
+
+def bootstrap(x, which='cell', seed=None, return_cond=False):
+    """
+    Arguments:
+        x - cell by gene matrix
+        which - bootstrap cells (rows) or genes (columns)
+
+        bootstrap is downsample with replacement using the same cell / gene size
+    """
+    n0, n1 = x.shape
+    
+    if seed is not None:
+        np.random.seed(seed)
+        rng = np.random.default_rng(seed=seed)
+    
+    if which in [0, 'cell', 'row']:
+        idx = np.random.choice(n0, size=n0, replace=True)
+        xout = x[idx, :]    
+    elif which in [1, 'gene', 'col', 'column']:
+        idx = np.random.choice(n1, size=n1, replace=True)
+        xout = x[:, idx]
+    else:
+        raise ValueError('choose from cell or gene')
+    
+    if return_cond:
+        return xout, idx 
+    else:
+        return xout
+
+def bootstrap_or_downsamp(x, which='cell', 
+                          is_bootstrap=True, downsamp_p=None, 
+                          seed=None, return_cond=False):
+    """
+    choose bootstrap (with replacement)
+    or downsample with a specified proportion (without replacement)
+    """
+
+    if is_bootstrap:
+        # bootstrap mode
+        return bootstrap(x, which='cell', seed=seed, return_cond=return_cond)
+
+    elif downsamp_p is not None:
+        # downsamp mode
+        assert (downsamp_p > 0 and downsamp_p < 1)
+
+        return downsamp(x, which='cell', p=downsamp_p, seed=seed, return_cond=return_cond)
+    else:
+        raise ValueError("choose Bootstrap or Downsamp")
+
+
 def shuffle_rows_per_col(x, seed=None):
     """
     Arguments:
