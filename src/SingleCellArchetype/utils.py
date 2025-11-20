@@ -5,6 +5,9 @@ import numpy as np
 from scipy.stats import zscore
 from scipy.spatial import ConvexHull
 from sklearn.decomposition import PCA
+from sklearn.metrics import pairwise_distances
+# from scipy.spatial.distance import pdist
+
 import matplotlib.pyplot as plt
 from py_pcha import PCHA
 
@@ -57,11 +60,18 @@ def proj(x_norm, ndim, method='PCA'):
 
 def pcha(X, noc=3, delta=0, **kwargs):
     """
+        X = XCS + err
+        
+        X  - (ndim, ncell) - original data
+        C  - (ncell, noc)  - definition of archetypes as a linear summation of cells
+        S  - (noc, ncell)  - cell locations reconstructed by archetype locations
+
+        XC = X.dot(C) - (ndim, noc) - archetype locations
     """
     XC, S, C, SSE, varexpl = PCHA(X, noc=noc, delta=delta, **kwargs)
     XC = np.array(XC)
     XC = XC[:,np.argsort(XC[0])] # assign an order according to x-axis 
-    return XC 
+    return XC, varexpl 
 
 def downsamp(x, which='cell', p=0.8, seed=None, return_cond=False):
     """
@@ -136,7 +146,6 @@ def bootstrap_or_downsamp(x, which='cell',
     else:
         raise ValueError("choose Bootstrap or Downsamp")
 
-
 def shuffle_rows_per_col(x, seed=None):
     """
     Arguments:
@@ -149,28 +158,53 @@ def shuffle_rows_per_col(x, seed=None):
     x_shuff = rng.permuted(x, axis=0)
     return x_shuff
 
+def get_t_ratio(xp, aa):
+    """
+    Arguments:
+        xp -- projected matrix (ncell by ndim)
+        aa -- inferred archetypes (ndim by noc)
+     
+    Return: 
+        t-ratio - ratio of areas (convex hull vs PCH)
+     
+    """
+    ch_area  = ConvexHull(xp).volume
+    pch_area  = ConvexHull(aa.T).volume
+
+    ### old 2d version
+    # assert xp.shape[1] == aa.shape[0] == 2
+    # x = aa[0]
+    # y = aa[1]
+    # pch_area = 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
+
+    return ch_area/pch_area
+
+def get_relative_variation(aa_list):
+    """noise / signal ratio (distance unit - not squared)
+    noise: mean distance variation
+    signal: mean pairwise distance between archetypes
+    """
+    # average across trials (for each noc, ndim)
+    aa_avg = np.mean(aa_list, axis=0).T
+    aa_std = np.std(aa_list, axis=0).T
+
+    # # OLD - relative variation
+    # pwdists = pdist(aa_avg)
+    # ref = np.mean(pwdists)
+    # epsilon = np.mean(np.sqrt(np.sum(np.power(aa_std,2), axis=1)))
+    # rv = epsilon/ref
+
+    # # NEW - relative variation
+    # signal - mean (across noc) distance (across ndim) to the nearest archetype
+    signal = np.mean(np.sort(pairwise_distances(aa_avg), axis=0)[1])
+    # noise - mean (across noc) distance diff (across ndim) around an archetype
+    noise  = np.mean(np.sqrt(np.sum(np.power(aa_std,2), axis=1)))
+    
+    rv = noise/signal
+    return rv 
+
 def plot_archetype(ax, aa, fmt='--o', color='k', **kwargs):
     """
     """
     ax.plot(aa[0].tolist()+[aa[0,0]], aa[1].tolist()+[aa[1,0]], fmt, color=color, **kwargs)
     
-def get_t_ratio(xp, aa):
-    """
-    Arguments:
-     xp -- projected matrix (cell by 2)
-     aa -- inferred archetypes (2 by noc)
-     note that this function only works for 2-dimensional space only
-     
-    Return: 
-     t-ratio - ratio of areas (convex hull vs PCH)
-     
-    """
-    assert xp.shape[1] == aa.shape[0] == 2
-    
-    ch_area  = ConvexHull(xp).volume
-   
-    x = aa[0]
-    y = aa[1]
-    pch_area = 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
-
-    return ch_area/pch_area 

@@ -19,7 +19,6 @@ class SCA():
         Initiate the SingleCellArchetype object
 
         """
-        
         # input
         self.xn = norm_mat
         self.types = types
@@ -67,17 +66,18 @@ class SCA():
         """
         """
         xp = proj(self.xf, ndim)
-        aa = pcha(xp.T, noc=noc, **kwargs)
+        aa, varexpl = pcha(xp.T, noc=noc, **kwargs)
         
         self.xp = xp
         self.aa = aa
-        return (xp, aa)
+        self.varexpl = varexpl
+        return (xp, aa, varexpl)
         
     def bootstrap_proj_pcha(self, ndim, noc, nrepeats=10, which='cell',
                            is_bootstrap=True,
                            downsamp_p=None,
                            preserve_embedding_sign=True, 
-                           seed=0,
+                           seed=None,
                            **kwargs): 
         """bootstrap or downsample (with a specified p)
         """
@@ -96,7 +96,6 @@ class SCA():
                                     return_cond=True)
 
             xp_dsamp = proj(xn_dsamp, ndim)
-            
             # match sign
             if preserve_embedding_sign:
                 for i in range(ndim):
@@ -104,29 +103,32 @@ class SCA():
                     sign = 2*int(r>0)-1
                     xp_dsamp[:,i] = sign*xp_dsamp[:,i]
             
-            aa_dsamp = pcha(xp_dsamp.T, noc=noc, **kwargs)
+            aa_dsamp, varexpl_dsamp = pcha(xp_dsamp.T, noc=noc, **kwargs)
             aa_dsamps.append(aa_dsamp)
             
         return aa_dsamps
     
     def t_ratio_test(self, ndim, noc, nrepeats=10, **kwargs): 
         """
-        this only work for 2-dimensional space for now
         """
-        assert ndim == 2
         
         self.setup_feature_matrix(method='data')
-        xp, aa = self.proj_and_pcha(ndim, noc)
+        xp, aa, varexpl = self.proj_and_pcha(ndim, noc)
         t_ratio = get_t_ratio(xp, aa)
         
-        t_ratios_shuff = []
+        t_ratio_shuff_list = []
         for i in range(nrepeats):
-            self.setup_feature_matrix(method='gshuff')
-            xp_shuff, aa_shuff = self.proj_and_pcha(ndim, noc)
-            t_ratio_shuff = get_t_ratio(xp_shuff, aa_shuff)
-            t_ratios_shuff.append(t_ratio_shuff)
+            try: 
+                self.setup_feature_matrix(method='gshuff')
+                xp_shuff, aa_shuff, varexpl_shuff = self.proj_and_pcha(ndim, noc)
+                t_ratio_shuff = get_t_ratio(xp_shuff, aa_shuff)
+                t_ratio_shuff_list.append(t_ratio_shuff)
+            except:
+                print(f"skip repeat {i} - non convergence")
+                nrepeats -= 1
+        t_ratio_shuff_list = np.array(t_ratio_shuff_list)
             
-        pvalue = (np.sum(t_ratio > t_ratios_shuff)+1)/nrepeats
+        pvalue = (np.sum(t_ratio > t_ratio_shuff_list)+1)/nrepeats
         
-        return t_ratio, t_ratios_shuff, pvalue
+        return t_ratio, t_ratio_shuff_list, pvalue
         
