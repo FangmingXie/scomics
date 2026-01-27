@@ -36,7 +36,7 @@ def norm(x, depths):
 
     return xn
 
-def proj(x_norm, ndim, method='PCA'):
+def proj(x_norm, ndim, method='PCA', skip_pc1=False):
     """
     Arguments: 
         x_norm - normalized cell by gene feature matrix
@@ -52,9 +52,15 @@ def proj(x_norm, ndim, method='PCA'):
     """
 
     if method == 'PCA':
-        x_proj = PCA(n_components=ndim).fit_transform(x_norm)
+        x_proj = PCA(n_components=ndim+1).fit_transform(x_norm)
     else:
         raise ValueError('methods other than PCA are not implemented...')
+    
+    # trim (last one or first one)
+    if skip_pc1:
+        x_proj = x_proj[:,1:]
+    else:
+        x_proj = x_proj[:,:-1]
 
     return x_proj
 

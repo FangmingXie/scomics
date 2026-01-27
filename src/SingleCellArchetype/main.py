@@ -62,10 +62,10 @@ class SCA():
         else:
             raise ValueError('choose from (data, gshuff, tshuff)')
     
-    def proj_and_pcha(self, ndim, noc, **kwargs):
+    def proj_and_pcha(self, ndim, noc, skip_pc1=False, **kwargs):
         """
         """
-        xp = proj(self.xf, ndim)
+        xp = proj(self.xf, ndim, skip_pc1=skip_pc1)
         aa, varexpl = pcha(xp.T, noc=noc, **kwargs)
         
         self.xp = xp
@@ -74,6 +74,7 @@ class SCA():
         return (xp, aa, varexpl)
         
     def bootstrap_proj_pcha(self, ndim, noc, nrepeats=10, which='cell',
+                           skip_pc1=False,
                            is_bootstrap=True,
                            downsamp_p=None,
                            preserve_embedding_sign=True, 
@@ -84,7 +85,7 @@ class SCA():
         if seed is not None:
             np.random.seed(seed)
 
-        xp0 = proj(self.xf, ndim)
+        xp0 = proj(self.xf, ndim, skip_pc1=skip_pc1)
         
         aa_dsamps = []
         for i in range(nrepeats):
@@ -95,10 +96,10 @@ class SCA():
                                     downsamp_p=downsamp_p, 
                                     return_cond=True)
 
-            xp_dsamp = proj(xn_dsamp, ndim)
+            xp_dsamp = proj(xn_dsamp, ndim, skip_pc1=skip_pc1)
             # match sign
             if preserve_embedding_sign:
-                for i in range(ndim):
+                for i in range(ndim): 
                     r, _ = stats.pearsonr(xp0[cond_dsamp,i], xp_dsamp[:,i])
                     sign = 2*int(r>0)-1
                     xp_dsamp[:,i] = sign*xp_dsamp[:,i]
@@ -108,19 +109,19 @@ class SCA():
             
         return aa_dsamps
     
-    def t_ratio_test(self, ndim, noc, nrepeats=10, **kwargs): 
+    def t_ratio_test(self, ndim, noc, nrepeats=10, skip_pc1=False, **kwargs): 
         """
         """
         
         self.setup_feature_matrix(method='data')
-        xp, aa, varexpl = self.proj_and_pcha(ndim, noc)
+        xp, aa, varexpl = self.proj_and_pcha(ndim, noc, skip_pc1=skip_pc1)
         t_ratio = get_t_ratio(xp, aa)
         
         t_ratio_shuff_list = []
         for i in range(nrepeats):
             try: 
                 self.setup_feature_matrix(method='gshuff')
-                xp_shuff, aa_shuff, varexpl_shuff = self.proj_and_pcha(ndim, noc)
+                xp_shuff, aa_shuff, varexpl_shuff = self.proj_and_pcha(ndim, noc, skip_pc1=skip_pc1)
                 t_ratio_shuff = get_t_ratio(xp_shuff, aa_shuff)
                 t_ratio_shuff_list.append(t_ratio_shuff)
             except:
