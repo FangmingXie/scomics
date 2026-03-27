@@ -6,7 +6,6 @@ from scipy.stats import zscore
 from scipy.spatial import ConvexHull
 from sklearn.decomposition import PCA
 from sklearn.metrics import pairwise_distances
-# from scipy.spatial.distance import pdist
 
 import matplotlib.pyplot as plt
 from py_pcha import PCHA
@@ -52,16 +51,35 @@ def proj(x_norm, ndim, method='PCA', skip_pc1=False):
     """
 
     if method == 'PCA':
-        x_proj = PCA(n_components=ndim+1).fit_transform(x_norm)
+        pca_model = PCA(n_components=ndim+1)
+        x_proj = pca_model.fit_transform(x_norm)
     else:
         raise ValueError('methods other than PCA are not implemented...')
-    
+
     # trim (last one or first one)
     if skip_pc1:
         x_proj = x_proj[:,1:]
     else:
         x_proj = x_proj[:,:-1]
 
+    return x_proj, pca_model
+
+def proj_transform(x_norm, pca_model, skip_pc1=False):
+    """Project data using an already-fitted PCA model (no re-fitting).
+
+    Arguments:
+        x_norm    - normalized cell by gene feature matrix
+        pca_model - a fitted sklearn PCA object (from proj())
+        skip_pc1  - if True, drop PC1 and keep the next ndim components
+
+    Output:
+        x_proj - low-dimensional projection of x_norm
+    """
+    x_proj = pca_model.transform(x_norm)
+    if skip_pc1:
+        x_proj = x_proj[:,1:]
+    else:
+        x_proj = x_proj[:,:-1]
     return x_proj
 
 def pcha(X, noc=3, delta=0, **kwargs):
@@ -114,15 +132,13 @@ def bootstrap(x, which='cell', seed=None, return_cond=False):
     """
     n0, n1 = x.shape
     
-    if seed is not None:
-        np.random.seed(seed)
-        rng = np.random.default_rng(seed=seed)
-    
+    rng = np.random.default_rng(seed=seed)
+
     if which in [0, 'cell', 'row']:
-        idx = np.random.choice(n0, size=n0, replace=True)
-        xout = x[idx, :]    
+        idx = rng.choice(n0, size=n0, replace=True)
+        xout = x[idx, :]
     elif which in [1, 'gene', 'col', 'column']:
-        idx = np.random.choice(n1, size=n1, replace=True)
+        idx = rng.choice(n1, size=n1, replace=True)
         xout = x[:, idx]
     else:
         raise ValueError('choose from cell or gene')
@@ -146,7 +162,8 @@ def bootstrap_or_downsamp(x, which='cell',
 
     elif downsamp_p is not None:
         # downsamp mode
-        assert (downsamp_p > 0 and downsamp_p < 1)
+        if not (0 < downsamp_p < 1):
+            raise ValueError(f"downsamp_p must be in (0, 1), got {downsamp_p}")
 
         return downsamp(x, which='cell', p=downsamp_p, seed=seed, return_cond=return_cond)
     else:
@@ -176,13 +193,6 @@ def get_t_ratio(xp, aa):
     """
     ch_area  = ConvexHull(xp).volume
     pch_area  = ConvexHull(aa.T).volume
-
-    ### old 2d version
-    # assert xp.shape[1] == aa.shape[0] == 2
-    # x = aa[0]
-    # y = aa[1]
-    # pch_area = 0.5*np.abs(np.dot(x,np.roll(y,1))-np.dot(y,np.roll(x,1)))
-
     return ch_area/pch_area
 
 def get_relative_variation(aa_list):
@@ -194,13 +204,6 @@ def get_relative_variation(aa_list):
     aa_avg = np.mean(aa_list, axis=0).T
     aa_std = np.std(aa_list, axis=0).T
 
-    # # OLD - relative variation
-    # pwdists = pdist(aa_avg)
-    # ref = np.mean(pwdists)
-    # epsilon = np.mean(np.sqrt(np.sum(np.power(aa_std,2), axis=1)))
-    # rv = epsilon/ref
-
-    # # NEW - relative variation
     # signal - mean (across noc) distance (across ndim) to the nearest archetype
     signal = np.mean(np.sort(pairwise_distances(aa_avg), axis=0)[1])
     # noise - mean (across noc) distance diff (across ndim) around an archetype
@@ -208,6 +211,11 @@ def get_relative_variation(aa_list):
     
     rv = noise/signal
     return rv 
+
+def mean_archetype_dist(aa_samp, aa_global):
+    """Mean distance between matched archetypes (after nearest-neighbor matching)."""
+    D = pairwise_distances(aa_samp.T, aa_global.T)
+    return np.mean(D.min(axis=1))
 
 def plot_archetype(ax, aa, fmt='--o', color='k', **kwargs):
     """

@@ -65,12 +65,14 @@ class SCA():
     def proj_and_pcha(self, ndim, noc, skip_pc1=False, **kwargs):
         """
         """
-        xp = proj(self.xf, ndim, skip_pc1=skip_pc1)
+        xp, pca_model = proj(self.xf, ndim, skip_pc1=skip_pc1)
         aa, varexpl = pcha(xp.T, noc=noc, **kwargs)
-        
+
         self.xp = xp
         self.aa = aa
         self.varexpl = varexpl
+        self.pca_ = pca_model
+        self.skip_pc1_ = skip_pc1
         return (xp, aa, varexpl)
         
     def bootstrap_proj_pcha(self, ndim, noc, nrepeats=10, which='cell',
@@ -82,27 +84,25 @@ class SCA():
                            **kwargs): 
         """bootstrap or downsample (with a specified p)
         """
-        if seed is not None:
-            np.random.seed(seed)
+        xp0, _ = proj(self.xf, ndim, skip_pc1=skip_pc1)
 
-        xp0 = proj(self.xf, ndim, skip_pc1=skip_pc1)
-        
         aa_dsamps = []
         for i in range(nrepeats):
             xn_dsamp, cond_dsamp = bootstrap_or_downsamp(
-                                    self.xf, 
-                                    which=which, 
+                                    self.xf,
+                                    which=which,
                                     is_bootstrap=is_bootstrap,
-                                    downsamp_p=downsamp_p, 
+                                    downsamp_p=downsamp_p,
+                                    seed=seed,
                                     return_cond=True)
 
-            xp_dsamp = proj(xn_dsamp, ndim, skip_pc1=skip_pc1)
+            xp_dsamp, _ = proj(xn_dsamp, ndim, skip_pc1=skip_pc1)
             # match sign
             if preserve_embedding_sign:
-                for i in range(ndim): 
-                    r, _ = stats.pearsonr(xp0[cond_dsamp,i], xp_dsamp[:,i])
+                for dim in range(ndim):
+                    r, _ = stats.pearsonr(xp0[cond_dsamp,dim], xp_dsamp[:,dim])
                     sign = 2*int(r>0)-1
-                    xp_dsamp[:,i] = sign*xp_dsamp[:,i]
+                    xp_dsamp[:,dim] = sign*xp_dsamp[:,dim]
             
             aa_dsamp, varexpl_dsamp = pcha(xp_dsamp.T, noc=noc, **kwargs)
             aa_dsamps.append(aa_dsamp)
@@ -119,17 +119,40 @@ class SCA():
         
         t_ratio_shuff_list = []
         for i in range(nrepeats):
-            try: 
+            try:
                 self.setup_feature_matrix(method='gshuff')
                 xp_shuff, aa_shuff, varexpl_shuff = self.proj_and_pcha(ndim, noc, skip_pc1=skip_pc1)
                 t_ratio_shuff = get_t_ratio(xp_shuff, aa_shuff)
                 t_ratio_shuff_list.append(t_ratio_shuff)
-            except:
-                print(f"skip repeat {i} - non convergence")
-                nrepeats -= 1
+            except Exception as e:
+                if 'converge' in str(e).lower() or 'convergence' in str(e).lower():
+                    print(f"skip repeat {i} - non convergence")
+                else:
+                    raise
         t_ratio_shuff_list = np.array(t_ratio_shuff_list)
-            
-        pvalue = (np.sum(t_ratio > t_ratio_shuff_list)+1)/nrepeats
-        
+
+        pvalue = (np.sum(t_ratio > t_ratio_shuff_list) + 1) / len(t_ratio_shuff_list)
+
         return t_ratio, t_ratio_shuff_list, pvalue
+
+    def pcha_on_subset(self, mask, noc, skip_pc1=False, **kwargs):
+        """Run PCHA on a cell subset using the globally-fitted PCA.
+
+        Requires proj_and_pcha to have been called first (to fit self.pca_).
+
+        Arguments:
+            mask     - boolean array of length ncells selecting the subset
+            noc      - number of archetypes
+            skip_pc1 - must match the value used in proj_and_pcha
+
+        Returns:
+            xp_sub  - projected subset (ncells_sub, ndim)
+            aa      - archetype coordinates (ndim, noc)
+            varexpl - variance explained
+        """
+        if not hasattr(self, 'pca_'):
+            raise ValueError("Call proj_and_pcha first to fit the global PCA.")
+        xp_sub = proj_transform(self.xf[mask], self.pca_, skip_pc1=skip_pc1)
+        aa, varexpl = pcha(xp_sub.T, noc=noc, **kwargs)
+        return xp_sub, aa, varexpl
         
