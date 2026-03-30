@@ -34,8 +34,7 @@ SingleCellArchetype/
 
 ## Environment
 
-- Conda env to use to run this project: `archetype`  
-- Key dependencies: `anndata`, `py_pcha`
+- Use this conda env to run this project: `archetype`  
 
 ## .gitignore Notes
 
