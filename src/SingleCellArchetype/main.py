@@ -87,7 +87,9 @@ class SCA():
         xp0, _ = proj(self.xf, ndim, skip_pc1=skip_pc1)
 
         aa_dsamps = []
-        for i in range(nrepeats):
+        attempts = 0
+        while len(aa_dsamps) < nrepeats and attempts < nrepeats * 5:
+            attempts += 1
             xn_dsamp, cond_dsamp = bootstrap_or_downsamp(
                                     self.xf,
                                     which=which,
@@ -103,10 +105,13 @@ class SCA():
                     r, _ = stats.pearsonr(xp0[cond_dsamp,dim], xp_dsamp[:,dim])
                     sign = 2*int(r>0)-1
                     xp_dsamp[:,dim] = sign*xp_dsamp[:,dim]
-            
-            aa_dsamp, varexpl_dsamp = pcha(xp_dsamp.T, noc=noc, **kwargs)
+
+            try:
+                aa_dsamp, varexpl_dsamp = pcha(xp_dsamp.T, noc=noc, **kwargs)
+            except Exception:
+                continue
             aa_dsamps.append(aa_dsamp)
-            
+
         return aa_dsamps
     
     def t_ratio_test(self, ndim, noc, nrepeats=10, skip_pc1=False, **kwargs): 
