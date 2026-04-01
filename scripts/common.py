@@ -2,6 +2,8 @@
 
 import itertools
 import numpy as np
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
@@ -145,6 +147,122 @@ def save_interactive_html(noc_grid, ev_grid, av_grid, xp_grid, aa_grid,
         fig.update_layout(**{scene_key: dict(xaxis_title='PC1', yaxis_title='PC2', zaxis_title='PC3')})
 
     fig.update_layout(title=title, width=900, height=450 * nrows)
+    fig.write_html(out_path)
+    print(f"  Saved {out_path}")
+
+
+def _metadata_to_colors(values):
+    """Convert raw metadata values to per-cell hex color strings.
+
+    Numeric arrays use viridis with vmin/vmax at 5th/95th percentiles.
+    Non-numeric arrays use discrete matplotlib color cycle.
+    """
+    try:
+        vals = np.array(values, dtype=float)
+        vmin = np.nanpercentile(vals, 5)
+        vmax = np.nanpercentile(vals, 95)
+        norm = mcolors.Normalize(vmin=vmin, vmax=vmax)
+        return [mcolors.to_hex(cm.viridis(norm(v))) for v in vals]
+    except (ValueError, TypeError):
+        cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        unique_vals = sorted(set(str(v) for v in values))
+        val_to_color = {v: cycle[i % len(cycle)] for i, v in enumerate(unique_vals)}
+        return [val_to_color[str(v)] for v in values]
+
+
+def save_interactive_html_pro(noc_grid, ev_grid, av_grid, xp_grid, aa_grid,
+                              cell_metadata, ndim, title, out_path):
+    """Save 2D + 3D interactive HTML with toggle buttons to color cells by different metadata labels.
+
+    All NOC archetype polygons are overlaid on the same two panels (2D left, 3D right).
+    Each NOC's archetypes can be toggled on/off via the Plotly legend.
+
+    cell_metadata: dict[str, array] mapping label name to per-cell raw values.
+    Categorical variables use discrete color cycle; continuous variables use viridis
+    with vmin/vmax clipped at 5th/95th percentiles.
+    """
+    cell_metadata_colors = {k: _metadata_to_colors(v) for k, v in cell_metadata.items()}
+    initial_colors = next(iter(cell_metadata_colors.values()))
+    n = len(noc_grid)
+
+    fig = make_subplots(
+        rows=1, cols=2,
+        specs=[[{'type': 'xy'}, {'type': 'scene'}]],
+        subplot_titles=['2D  PC1 vs PC2', '3D  PC1–PC3'],
+    )
+
+    # Cells plotted once (PCA positions are NOC-independent; use xp_grid[0])
+    xp = xp_grid[0]
+
+    # Trace index 0: 2D cells
+    fig.add_trace(go.Scatter(
+        x=xp[:, 0], y=xp[:, 1], mode='markers',
+        marker=dict(size=2, color=initial_colors, opacity=0.6),
+        name='cells', showlegend=True, legendgroup='cells',
+    ), row=1, col=1)
+    fig.update_xaxes(title_text='PC1', row=1, col=1)
+    fig.update_yaxes(title_text='PC2', row=1, col=1)
+
+    # Traces 1..2n: 2D archetypes per NOC (2 traces each: markers + polygon)
+    for i, noc in enumerate(noc_grid):
+        aa = aa_grid[i]
+        lg = f'NOC={noc}  EV={ev_grid[i]:.3f}  ARV={av_grid[i]:.3f}'
+        fig.add_trace(go.Scatter(
+            x=aa[0, :], y=aa[1, :], mode='markers',
+            marker=dict(size=8, color='black', symbol='diamond'),
+            name=lg, showlegend=True, legendgroup=lg,
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=list(aa[0, :]) + [aa[0, 0]], y=list(aa[1, :]) + [aa[1, 0]], mode='lines',
+            line=dict(color='black', width=1.5),
+            showlegend=False, legendgroup=lg,
+        ), row=1, col=1)
+
+    # Trace index 2n+1: 3D cells
+    fig.add_trace(go.Scatter3d(
+        x=xp[:, 0], y=xp[:, 1], z=xp[:, 2], mode='markers',
+        marker=dict(size=2, color=initial_colors, opacity=0.6),
+        showlegend=False, legendgroup='cells',
+    ), row=1, col=2)
+
+    # Traces 2n+2..4n+1: 3D archetypes per NOC (2 traces each: markers + edges)
+    for i, noc in enumerate(noc_grid):
+        aa = aa_grid[i]
+        lg = f'NOC={noc}  EV={ev_grid[i]:.3f}  ARV={av_grid[i]:.3f}'
+        fig.add_trace(go.Scatter3d(
+            x=aa[0, :], y=aa[1, :], z=aa[2, :], mode='markers',
+            marker=dict(size=6, color='black', symbol='diamond'),
+            showlegend=False, legendgroup=lg,
+        ), row=1, col=2)
+        ex, ey, ez = [], [], []
+        for a, b in itertools.combinations(range(noc), 2):
+            ex += [aa[0, a], aa[0, b], None]
+            ey += [aa[1, a], aa[1, b], None]
+            ez += [aa[2, a], aa[2, b], None]
+        fig.add_trace(go.Scatter3d(
+            x=ex, y=ey, z=ez, mode='lines',
+            line=dict(color='black', width=2),
+            showlegend=False, legendgroup=lg,
+        ), row=1, col=2)
+
+    fig.update_layout(scene=dict(xaxis_title='PC1', yaxis_title='PC2', zaxis_title='PC3'))
+
+    # Metadata color buttons target cell traces only: index 0 (2D) and 2n+1 (3D)
+    cell_trace_indices = [0, 2 * n + 1]
+    buttons = [
+        dict(label=label, method='restyle',
+             args=[{'marker.color': [colors] * len(cell_trace_indices)}, cell_trace_indices])
+        for label, colors in cell_metadata_colors.items()
+    ]
+
+    fig.update_layout(
+        title=title, width=1100, height=600,
+        updatemenus=[dict(
+            type='buttons', direction='right',
+            x=0.0, xanchor='left', y=1.05, yanchor='bottom',
+            buttons=buttons,
+        )],
+    )
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 

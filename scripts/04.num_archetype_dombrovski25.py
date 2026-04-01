@@ -16,7 +16,7 @@ import anndata as ad
 
 sys.path.insert(0, os.path.dirname(__file__))
 from common import (select_hvg, run_noc_sweep, save_metrics_plot,
-                    save_interactive_html, save_group_overlay_html)
+                    save_interactive_html_pro, save_group_overlay_html)
 
 from SingleCellArchetype.main import SCA
 from SingleCellArchetype.utils import norm
@@ -33,7 +33,7 @@ NOC_MAX = 6
 NREPEATS = 10
 
 
-def run_one(celltype, age, x_all, depths_all, types_all, ages_all, genotypes_all,
+def run_one(celltype, age, x_all, depths_all, obs_df_all, types_all, ages_all,
             noc_grid, ndim, nrepeats, fig_dir):
     """Run full archetype-number sweep for one (celltype, age) and save outputs."""
     mask = (types_all == celltype) & (ages_all == age)
@@ -45,7 +45,8 @@ def run_one(celltype, age, x_all, depths_all, types_all, ages_all, genotypes_all
 
     x = x_all[mask]
     depths = depths_all[mask]
-    genotypes = genotypes_all[mask]
+    obs_df = obs_df_all[mask]
+    genotypes = obs_df['genotype'].values
     genotype_ids = np.unique(genotypes)
 
     # drop constant genes to avoid NaN in zscore
@@ -68,12 +69,12 @@ def run_one(celltype, age, x_all, depths_all, types_all, ages_all, genotypes_all
 
     cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     genotype_to_color = {g: cycle[i % len(cycle)] for i, g in enumerate(genotype_ids)}
-    cell_colors = [genotype_to_color[g] for g in genotypes]
+    cell_metadata = {col: obs_df[col].values for col in obs_df.columns}
 
-    save_interactive_html(noc_grid, ev_grid, av_grid, xp_grid, aa_grid,
-                          cell_colors, ndim,
-                          f'{celltype}  {age} — 2D & 3D view (NDIM={ndim})',
-                          fig_interactive)
+    save_interactive_html_pro(noc_grid, ev_grid, av_grid, xp_grid, aa_grid,
+                              cell_metadata, ndim,
+                              f'{celltype}  {age} — 2D & 3D view (NDIM={ndim})',
+                              fig_interactive)
 
     save_group_overlay_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid,
                             genotypes, genotype_to_color, ndim,
@@ -91,14 +92,14 @@ hvg_mask = select_hvg(x_raw, depths_raw, N_TOP_GENES)
 
 x_all = x_raw[:, hvg_mask]
 depths_all = depths_raw
+obs_df_all = adata.obs
 types_all = adata.obs['type1'].values
 ages_all = adata.obs['orig.ident'].values
-genotypes_all = adata.obs['genotype'].values
 
 os.makedirs(FIG_DIR, exist_ok=True)
 noc_grid = np.arange(NOC_MIN, NOC_MAX + 1)
 
 for celltype in CELLTYPES:
     for age in np.unique(ages_all):
-        run_one(celltype, age, x_all, depths_all, types_all, ages_all, genotypes_all,
+        run_one(celltype, age, x_all, depths_all, obs_df_all, types_all, ages_all,
                 noc_grid, NDIM, NREPEATS, FIG_DIR)
