@@ -22,8 +22,8 @@ from SingleCellArchetype.main import SCA
 from SingleCellArchetype.utils import norm
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INPUT_FILE = os.path.join(PROJECT_ROOT, 'local_data', 'processed', 'dombrowski25_fly', 'dombrowski25_fly.h5ad')
-FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'dombrowski25_fly')
+INPUT_FILE = os.path.join(PROJECT_ROOT, 'local_data', 'processed', 'dombrovski25_fly', 'dombrowski25_fly.h5ad')
+FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'dombrovski25_fly')
 
 CELLTYPES = ['LC4', 'LPLC1', 'LPLC2']  # exclude 'X'
 N_TOP_GENES = 2000

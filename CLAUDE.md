@@ -11,14 +11,16 @@ SingleCellArchetype/
 ├── data/                  # sample data (tracked)
 ├── local_data/            # local/large data (gitignored)
 ├── docs/                  # documentation
-├── scripts/               # standalone scripts
+├── scripts/               # standalone analysis scripts, organized by dataset
+│   ├── common.py          # shared utilities for scripts
+│   ├── cheng22/           # Cheng et al. 2022 analysis
+│   ├── dombrovski25/      # Dombrovski et al. 2025 analysis
+│   └── morcom26/          # Morcom et al. 2026 analysis
 └── src/
     └── SingleCellArchetype/
         ├── __init__.py
         ├── main.py
-        ├── utils.py
-        ├── tutorial_complete.ipynb
-        └── tutorial_minimum.ipynb
+        └── utils.py
 ```
 
 ## Git Branches
