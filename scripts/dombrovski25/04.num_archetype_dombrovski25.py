@@ -14,9 +14,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import anndata as ad
 
-sys.path.insert(0, os.path.dirname(__file__))
-from common import (select_hvg, run_noc_sweep, save_metrics_plot,
-                    save_interactive_html_pro, save_group_overlay_html)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from common import select_hvg, run_noc_sweep
+from viz import save_metrics_plot, scatter_html, scatter_per_group_html
 
 from SingleCellArchetype.main import SCA
 from SingleCellArchetype.utils import norm
@@ -71,13 +71,13 @@ def run_one(celltype, age, x_all, depths_all, obs_df_all, types_all, ages_all,
     genotype_to_color = {g: cycle[i % len(cycle)] for i, g in enumerate(genotype_ids)}
     cell_metadata = {col: obs_df[col].values for col in obs_df.columns}
 
-    save_interactive_html_pro(noc_grid, ev_grid, av_grid, xp_grid, aa_grid,
-                              cell_metadata, ndim,
-                              f'{celltype}  {age} — 2D & 3D view (NDIM={ndim})',
-                              fig_interactive)
+    scatter_html(xp_grid, cell_metadata,
+                 f'{celltype}  {age} — 2D & 3D view (NDIM={ndim})',
+                 fig_interactive,
+                 noc_grid=noc_grid, ev_grid=ev_grid, av_grid=av_grid, aa_grid=aa_grid)
 
-    save_group_overlay_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid,
-                            genotypes, genotype_to_color, ndim,
+    scatter_per_group_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid,
+                            genotypes, genotype_to_color,
                             f'{celltype}  {age} — per-genotype overlay (NDIM={ndim})',
                             fig_rep)
 

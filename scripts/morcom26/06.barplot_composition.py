@@ -1,23 +1,26 @@
 import os
+import sys
 import numpy as np
 import pandas as pd
 import anndata as ad
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 # --- file paths ---
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCRIPTS_DIR  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(SCRIPTS_DIR)
 H5AD_FILE    = os.path.join(PROJECT_ROOT, 'local_data', 'raw', 'morcom26_cux2mice', 'P26_ENs.h5ad')
 OUT_FIG_DIR  = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'morcom26_cux2mice')
 OUT_HTML     = os.path.join(OUT_FIG_DIR, '06.barplot_composition.html')
 
 # --- config ---
-CELLTYPE_COL  = 'celltype'
-SAMPLE_COL    = 'samples'
-CONDITION_COL = 'Condition'
+CELLTYPE_COL    = 'celltype'
+SAMPLE_COL      = 'samples'
+CONDITION_COL   = 'Condition'
 OTHER_MIX_LABEL = 'Other-mix'
+
+sys.path.insert(0, SCRIPTS_DIR)
+from viz import stacked_bar_html
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
@@ -58,45 +61,16 @@ def compute_fractions(obs, group_col, group_order):
 sample_frac    = compute_fractions(obs, SAMPLE_COL, sample_order)
 condition_frac = compute_fractions(obs, CONDITION_COL, condition_order)
 
-# --- build figure ---
-fig = make_subplots(
-    rows=1, cols=2,
-    subplot_titles=['Per sample', 'Per condition'],
-    shared_yaxes=True,
-)
-
-for i, ct in enumerate(celltypes):
-    color = ct_colors[ct]
-    # panel 1: per sample
-    fig.add_trace(go.Bar(
-        name=ct,
-        x=sample_order,
-        y=sample_frac[ct].values,
-        marker_color=color,
-        legendgroup=ct,
-        showlegend=True,
-    ), row=1, col=1)
-    # panel 2: per condition
-    fig.add_trace(go.Bar(
-        name=ct,
-        x=condition_order,
-        y=condition_frac[ct].values,
-        marker_color=color,
-        legendgroup=ct,
-        showlegend=False,
-    ), row=1, col=2)
-
-fig.update_layout(
-    barmode='stack',
+# --- plot ---
+stacked_bar_html(
+    panel_data=[
+        ('Per sample',    sample_order,    sample_frac),
+        ('Per condition', condition_order, condition_frac),
+    ],
+    celltypes=celltypes,
+    ct_colors=ct_colors,
     title='Cell type composition',
-    yaxis_title='Fraction of cells',
-    yaxis=dict(range=[0, 1]),
-    legend=dict(itemsizing='constant', traceorder='normal'),
-    width=1000,
-    height=600,
+    out_path=OUT_HTML,
 )
-fig.update_xaxes(tickangle=45)
 
-fig.write_html(OUT_HTML)
-print(f'Saved {OUT_HTML}')
 print('Done.')
