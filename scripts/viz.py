@@ -365,3 +365,74 @@ def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None):
     fig.update_xaxes(tickangle=45)
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
+
+
+def gene_expr_boxplot_html(df, genes, sample_col, condition_col, sample_order,
+                           condition_colors, title, out_path,
+                           yaxis_title='log2(CP10k + 1)', width=600, height=600):
+    """Save interactive boxplot HTML with a dropdown to switch between genes.
+
+    df: DataFrame with sample_col, condition_col, and one column per gene.
+    genes: list of gene names (must be columns in df).
+    sample_order: ordered list of sample names for the x-axis.
+    condition_colors: dict mapping condition -> hex color string.
+    """
+    conditions = list(condition_colors.keys())
+    samples_by_condition = {
+        c: [s for s in sample_order if df.loc[df[condition_col] == c, sample_col].isin([s]).any()]
+        for c in conditions
+    }
+
+    all_traces = []
+    gene_trace_ranges = {}
+
+    for gene in genes:
+        start = len(all_traces)
+        for condition in conditions:
+            for i, sample in enumerate(samples_by_condition[condition]):
+                mask = df[sample_col] == sample
+                all_traces.append(go.Box(
+                    x=df.loc[mask, sample_col],
+                    y=df.loc[mask, gene],
+                    name=condition,
+                    legendgroup=condition,
+                    showlegend=(i == 0),
+                    marker_color=condition_colors[condition],
+                    boxpoints='outliers',
+                    width=0.75,
+                    visible=False,
+                ))
+        gene_trace_ranges[gene] = (start, len(all_traces))
+
+    # make first gene visible
+    first_start, first_end = gene_trace_ranges[genes[0]]
+    for i in range(first_start, first_end):
+        all_traces[i].visible = True
+
+    fig = go.Figure(data=all_traces)
+
+    buttons = []
+    n_total = len(all_traces)
+    for gene in genes:
+        start, end = gene_trace_ranges[gene]
+        vis = [start <= i < end for i in range(n_total)]
+        buttons.append(dict(label=gene, method='update',
+                            args=[{'visible': vis}, {'title': f'{gene} — {title}'}]))
+
+    fig.update_layout(
+        title=f'{genes[0]} — {title}',
+        xaxis=dict(title='Sample', categoryorder='array', categoryarray=sample_order, tickangle=45),
+        yaxis_title=yaxis_title,
+        boxmode='group',
+        width=width,
+        height=height,
+        legend_title='Condition',
+        updatemenus=[dict(
+            type='dropdown',
+            buttons=buttons,
+            x=0.0, xanchor='left', y=1.07, yanchor='top',
+            bgcolor='white', bordercolor='grey', font=dict(size=12),
+        )],
+    )
+    fig.write_html(out_path)
+    print(f"  Saved {out_path}")
