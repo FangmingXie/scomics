@@ -19,12 +19,22 @@ from viz import gene_expr_boxplot_html
 # --- config ---
 # GENES          = ['Kcnq5', 'Sema6d', 'Pcdh15', 'Sntg1']
 
-GENES = ['Fkbp5', 'Ldb2', 'Nr3c2', 
-         'Meis2', 'Gpc5', 'Gpc6', 
-         'Nell1', 'Sorcs3', 'Gm15398', 
-         'Grm8', 'Pcdh15', 'Zfp804b', 
-         'Rgma', 'Mkx', 'Etl4', 
-         'Kcnq5', 'Wls', 'Adra1a',
+GENES = [
+    # LMM list (top)
+    'Slc8a1', 'Ncam2', 'Kcnq5',
+
+    # # Saumya list
+    #      'Fkbp5', 'Ldb2', 'Nr3c2',
+    #      'Meis2', 'Gpc5', 'Gpc6',
+    #      'Nell1', 'Sorcs3', 'Gm15398',
+    #      'Grm8', 'Pcdh15', 'Zfp804b',
+    #      'Rgma', 'Mkx', 'Etl4',
+    #      'Kcnq5', 'Wls', 'Adra1a',
+
+    #  # DEG overall sig (21.deg_overall_sig.tsv)
+    #  'Manea', 'Tnrc18', 'Myo9a', 'Ccng1', '2900052L18Rik',
+    #  'Mapk1ip1l', 'Tex9', 'Jdp2', 'Rxylt1', 'Cnnm2',
+    #  'Pfkfb4', 'Dpy19l1', 'Syt1',
          ]
 CELLTYPE_COL   = 'celltype'
 SAMPLE_COL     = 'samples'
