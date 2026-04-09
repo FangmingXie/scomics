@@ -23,6 +23,13 @@ GENES = [
     # LMM list (top)
     'Slc8a1', 'Ncam2', 'Kcnq5',
 
+    # from their paper
+    'Actb', 'Otub2', 'Tmed2',
+
+    'Hdac9', 'Eepd1', 'Ddx3x', 'Msh2', 
+
+    'Rpa3', 'Cux1', 'Cux2', 'Atf4',
+
     # # Saumya list
     #      'Fkbp5', 'Ldb2', 'Nr3c2',
     #      'Meis2', 'Gpc5', 'Gpc6',

@@ -1,9 +1,12 @@
 import os
+import sys
 import numpy as np
 import pandas as pd
 import anndata as ad
 import scipy.sparse as sp
-import plotly.graph_objects as go
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import viz
 
 # --- file paths ---
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -61,62 +64,14 @@ gene_stds[gene_stds == 0] = 1
 X_zscore = (X_norm - gene_means) / gene_stds
 
 gene_idx = {g: list(adata.var_names).index(g) for g in GENES}
+gene_vals = {g: X_zscore[:, gene_idx[g]] for g in GENES}
 
-# --- build one trace per gene ---
-traces = []
-for i, gene in enumerate(GENES):
-    vals = X_zscore[:, gene_idx[gene]]
-    cmin = np.nanpercentile(vals, PCTILE_LOW)
-    cmax = np.nanpercentile(vals, PCTILE_HIGH)
-    traces.append(go.Scatter(
-        x=x,
-        y=y,
-        mode='markers',
-        name=gene,
-        marker=dict(
-            size=MARKER_SIZE,
-            color=vals,
-            colorscale='RdBu_r',
-            cmin=cmin,
-            cmax=cmax,
-            opacity=MARKER_OPACITY,
-            showscale=True,
-            colorbar=dict(title='z-score'),
-        ),
-        visible=(i == 0),
-        showlegend=False,
-    ))
-
-# --- build dropdown buttons ---
-buttons = []
-for i, gene in enumerate(GENES):
-    vis = [j == i for j in range(len(GENES))]
-    buttons.append(dict(
-        label=gene,
-        method='update',
-        args=[{'visible': vis}, {'title': f'{gene} — z-score(log1p(CP10k))'}],
-    ))
-
-fig = go.Figure(data=traces)
-fig.update_layout(
-    title=f'{GENES[0]} — z-score(log1p(CP10k))',
-    xaxis_title='PC1',
-    yaxis_title='PC2',
-    width=850,
-    height=700,
-    updatemenus=[dict(
-        type='dropdown',
-        buttons=buttons,
-        x=0.0,
-        xanchor='left',
-        y=1.07,
-        yanchor='top',
-        bgcolor='white',
-        bordercolor='grey',
-        font=dict(size=12),
-    )],
+viz.gene_expr_scatter_html(
+    x, y, gene_vals,
+    title='z-score(log1p(CP10k))',
+    out_path=OUT_HTML,
+    xlabel='PC1', ylabel='PC2',
+    pctile_low=PCTILE_LOW, pctile_high=PCTILE_HIGH,
+    marker_size=MARKER_SIZE, marker_opacity=MARKER_OPACITY,
 )
-
-fig.write_html(OUT_HTML)
-print(f'Saved {OUT_HTML}')
 print('Done.')

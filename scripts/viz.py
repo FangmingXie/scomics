@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from natsort import natsorted
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +283,80 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
     print(f"  Saved {out_path}")
 
 
+def scatter_2d_categorical_html(xp_grid, cell_metadata, title, out_path,
+                                xlabel='Dim1', ylabel='Dim2', ordered_labels=()):
+    """Like scatter_categorical_html but a single 2D panel only.
+
+    Useful for UMAP or any 2D embedding where a 3D view is not meaningful.
+    xlabel/ylabel label the axes (e.g. 'UMAP1'/'UMAP2' or 'PC1'/'PC2').
+    ordered_labels: collection of metadata keys that should use evenly spaced
+                    viridis colors (e.g. time-ordered categories like Age).
+                    All other categorical labels use the default color cycle.
+    """
+    xp = xp_grid[0]
+    cat_palette = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+    fig = go.Figure()
+
+    labels = list(cell_metadata.keys())
+    label_trace_ranges = {}
+
+    for li, (label, values) in enumerate(cell_metadata.items()):
+        visible = (li == 0)
+        start_idx = len(fig.data)
+
+        try:
+            vals = np.array(values, dtype=float)
+            vmin = np.nanpercentile(vals, 5)
+            vmax = np.nanpercentile(vals, 95)
+            fig.add_trace(go.Scatter(
+                x=xp[:, 0], y=xp[:, 1], mode='markers',
+                marker=dict(size=2, color=vals, colorscale='Viridis', cmin=vmin, cmax=vmax,
+                            opacity=0.6, showscale=True),
+                name=label, showlegend=False, visible=visible,
+            ))
+        except (ValueError, TypeError):
+            str_vals = np.array([str(v) for v in values])
+            unique_vals = natsorted(set(str_vals))
+            n = len(unique_vals)
+            if label in ordered_labels:
+                cmap = cm.get_cmap('turbo', n)
+                val_to_color = {v: mcolors.to_hex(cmap(i / max(n - 1, 1))) for i, v in enumerate(unique_vals)}
+            else:
+                val_to_color = {v: cat_palette[i % len(cat_palette)] for i, v in enumerate(unique_vals)}
+            for uv in unique_vals:
+                mask = str_vals == uv
+                fig.add_trace(go.Scatter(
+                    x=xp[mask, 0], y=xp[mask, 1], mode='markers',
+                    marker=dict(size=2, color=val_to_color[uv], opacity=0.6),
+                    name=uv, legendgroup=f'{label}__{uv}',
+                    showlegend=True, visible=visible,
+                ))
+
+        label_trace_ranges[label] = (start_idx, len(fig.data))
+
+    n_total = len(fig.data)
+    buttons = []
+    for label in labels:
+        start, end = label_trace_ranges[label]
+        vis = [start <= i < end for i in range(n_total)]
+        buttons.append(dict(label=label, method='update', args=[{'visible': vis}]))
+
+    fig.update_layout(
+        title=title,
+        xaxis_title=xlabel, yaxis_title=ylabel,
+        width=700, height=600,
+        legend=dict(itemsizing='constant'),
+        updatemenus=[dict(
+            type='buttons', direction='right',
+            x=0.0, xanchor='left', y=1.05, yanchor='bottom',
+            buttons=buttons,
+        )],
+    )
+    fig.write_html(out_path)
+    print(f"  Saved {out_path}")
+
+
 def scatter_per_group_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid,
                             groups, group_to_color, title, out_path):
     """Save 3D per-group overlay HTML (one panel per NOC)."""
@@ -324,7 +399,7 @@ def scatter_per_group_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid
     print(f"  Saved {out_path}")
 
 
-def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None):
+def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None, panel_width=500):
     """Save an interactive stacked bar chart HTML with one panel per group.
 
     panel_data: list of (panel_title, group_order, frac_df) where frac_df is a
@@ -359,10 +434,66 @@ def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None):
         yaxis_title='Fraction of cells',
         yaxis=dict(range=[0, 1]),
         legend=dict(itemsizing='constant', traceorder='normal'),
-        width=500 * len(panel_data),
+        width=panel_width * len(panel_data),
         height=600,
     )
     fig.update_xaxes(tickangle=45)
+    fig.write_html(out_path)
+    print(f"  Saved {out_path}")
+
+
+def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
+                           xlabel='Dim1', ylabel='Dim2',
+                           colorscale='RdBu_r',
+                           pctile_low=9, pctile_high=95,
+                           marker_size=3, marker_opacity=0.6,
+                           colorbar_title='z-score',
+                           width=850, height=700):
+    """Save interactive 2D scatter HTML colored by gene expression with a gene dropdown.
+
+    gene_vals: dict[str, np.ndarray] mapping gene name to per-cell float values (e.g. z-scores).
+    """
+    genes = list(gene_vals.keys())
+    traces = []
+    for i, gene in enumerate(genes):
+        vals = gene_vals[gene]
+        cmin = np.nanpercentile(vals, pctile_low)
+        cmax = np.nanpercentile(vals, pctile_high)
+        traces.append(go.Scatter(
+            x=x, y=y, mode='markers',
+            name=gene,
+            marker=dict(
+                size=marker_size,
+                color=vals,
+                colorscale=colorscale,
+                cmin=cmin, cmax=cmax,
+                opacity=marker_opacity,
+                showscale=True,
+                colorbar=dict(title=colorbar_title),
+            ),
+            visible=(i == 0),
+            showlegend=False,
+        ))
+
+    buttons = []
+    for i, gene in enumerate(genes):
+        vis = [j == i for j in range(len(genes))]
+        buttons.append(dict(
+            label=gene, method='update',
+            args=[{'visible': vis}, {'title': f'{gene} — {title}'}],
+        ))
+
+    fig = go.Figure(data=traces)
+    fig.update_layout(
+        title=f'{genes[0]} — {title}',
+        xaxis_title=xlabel, yaxis_title=ylabel,
+        width=width, height=height,
+        updatemenus=[dict(
+            type='dropdown', buttons=buttons,
+            x=0.0, xanchor='left', y=1.07, yanchor='top',
+            bgcolor='white', bordercolor='grey', font=dict(size=12),
+        )],
+    )
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
