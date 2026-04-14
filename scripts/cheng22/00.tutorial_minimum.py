@@ -1,4 +1,4 @@
-# The minimum example code to run `SingleCellArchetype`
+# The minimum example code to run `scomics`
 
 # import packages
 import os
@@ -9,14 +9,14 @@ sns.set_context('poster')
 
 import anndata as ad
 
-from SingleCellArchetype.main import SCA
-from SingleCellArchetype.utils import norm, plot_archetype
+from scomics.main import SCA
+from scomics.utils import norm, plot_archetype
 
 # infer project root from this script's location
-# __file__                                     -> .../SingleCellArchetype/scripts/tutorial_minimum.py
+# __file__                                     -> .../scomics/scripts/tutorial_minimum.py
 # os.path.abspath(__file__)                    -> absolute path of this script
-# os.path.dirname(...)                         -> .../SingleCellArchetype/scripts/
-# os.path.dirname(os.path.dirname(...))        -> .../SingleCellArchetype/   (project root)
+# os.path.dirname(...)                         -> .../scomics/scripts/
+# os.path.dirname(os.path.dirname(...))        -> .../scomics/   (project root)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INPUT_FILE = os.path.join(PROJECT_ROOT, 'data', 'data_snrna_v1.h5ad')
 FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig')
@@ -25,7 +25,7 @@ FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig')
 adata = ad.read_h5ad(INPUT_FILE)
 print(adata)
 
-# set up the SingleCellArchetype object
+# set up the SCA object
 x = np.array(adata.X.todense())
 depths = adata.obs['n_counts'].values
 types = adata.obs['Type'].values

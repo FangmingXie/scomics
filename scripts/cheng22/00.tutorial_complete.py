@@ -1,4 +1,4 @@
-# The full tutorial on `SingleCellArchetype`
+# The full tutorial on `scomics`
 
 # import packages
 import os
@@ -10,8 +10,8 @@ sns.set_context('poster')
 
 import anndata as ad
 
-from SingleCellArchetype.main import SCA
-from SingleCellArchetype.utils import norm, plot_archetype
+from scomics.main import SCA
+from scomics.utils import norm, plot_archetype
 
 # infer project root from this script's location
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,7 +22,7 @@ FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig')
 adata = ad.read_h5ad(INPUT_FILE)
 print(adata)
 
-# set up SingleCellArchetype object using the sample data
+# set up SCA object using the sample data
 x = np.array(adata.X.todense())
 depths = adata.obs['n_counts'].values
 types = adata.obs['Type'].values
@@ -30,7 +30,7 @@ types = adata.obs['Type'].values
 xn = norm(x, depths)
 sca = SCA(xn, types)
 
-# Run SingleCellArchetype with different controls
+# Run scomics SCA with different controls
 ndim = 2
 noc = 3
 nrepeats = 3

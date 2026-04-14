@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from SingleCellArchetype.utils import get_relative_variation
+from scomics.utils import get_relative_variation
 
 
 def select_hvg(x_raw, depths_raw, n_top_genes):

@@ -1,4 +1,4 @@
-"""SingleCellArchetype utils
+"""scomics utils
 """
 
 import numpy as np

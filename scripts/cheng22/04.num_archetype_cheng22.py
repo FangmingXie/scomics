@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import run_noc_sweep
 from viz import save_metrics_plot, scatter_per_group_html
 
-from SingleCellArchetype.main import SCA
-from SingleCellArchetype.utils import norm
+from scomics.main import SCA
+from scomics.utils import norm
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INPUT_FILE = os.path.join(PROJECT_ROOT, 'local_data', 'processed', 'cheng22', 'cheng22.h5ad')

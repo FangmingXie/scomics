@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import select_hvg, run_noc_sweep
 from viz import save_metrics_plot, scatter_html, scatter_per_group_html
 
-from SingleCellArchetype.main import SCA
-from SingleCellArchetype.utils import norm
+from scomics.main import SCA
+from scomics.utils import norm
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INPUT_FILE = os.path.join(PROJECT_ROOT, 'local_data', 'processed', 'dombrovski25_fly', 'dombrowski25_fly.h5ad')

@@ -16,7 +16,7 @@ warnings.filterwarnings('ignore')
 
 # --- file paths ---
 PROJECT_ROOT  = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REF_FILE      = '/home/qlyu/mydata/project/SingleCellArchetype/local_data/source/cheng22_yoo25/superdupermegaRNA_cheng22_IT_P28NR.h5ad'
+REF_FILE      = '/home/qlyu/mydata/project/scomics/local_data/source/cheng22_yoo25/superdupermegaRNA_cheng22_IT_P28NR.h5ad'
 TARGET_FILE   = os.path.join(PROJECT_ROOT, 'local_data', 'source', 'morcom26_cux2mice', 'P26_EN-L2-3-CTX_EN-L4-5-CTX_EN-L2-mix.h5ad')
 OUT_RES_DIR   = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'morcom26')
 OUT_FIG_DIR   = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'morcom26_cux2mice')

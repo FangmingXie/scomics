@@ -10,8 +10,8 @@ from sklearn.metrics import pairwise_distances
 
 import anndata as ad
 
-from SingleCellArchetype.main import SCA
-from SingleCellArchetype.utils import norm, plot_archetype, get_relative_variation, mean_archetype_dist
+from scomics.main import SCA
+from scomics.utils import norm, plot_archetype, get_relative_variation, mean_archetype_dist
 
 # infer project root from this script's location
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

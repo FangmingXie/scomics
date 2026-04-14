@@ -14,8 +14,8 @@ from plotly.subplots import make_subplots
 
 import anndata as ad
 
-from SingleCellArchetype.main import SCA
-from SingleCellArchetype.utils import norm, get_relative_variation
+from scomics.main import SCA
+from scomics.utils import norm, get_relative_variation
 
 # infer project root from this script's location
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

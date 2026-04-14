@@ -10,7 +10,7 @@ The sample identity column is **`sample`** in `adata.obs` (e.g. `'P28_1a'`).
 
 ## Changes Required
 
-### 1. `src/SingleCellArchetype/utils.py`
+### 1. `src/scomics/utils.py`
 
 **Modify `proj`** to return the fitted PCA model alongside the projection:
 ```python
@@ -30,7 +30,7 @@ def proj_transform(x_norm, pca_model, skip_pc1=False):
     return x_proj
 ```
 
-### 2. `src/SingleCellArchetype/main.py`
+### 2. `src/scomics/main.py`
 
 **Update all callers of `proj`** to unpack `(xp, pca_model)`:
 - `proj_and_pcha`: store `self.pca_` after fitting
@@ -90,8 +90,8 @@ fig.savefig(FIG_PER_SAMPLE)
 
 | File | Change |
 |------|--------|
-| `src/SingleCellArchetype/utils.py` | modify `proj`, add `proj_transform` |
-| `src/SingleCellArchetype/main.py` | update `proj_and_pcha`, `bootstrap_proj_pcha`; add `pcha_on_subset` |
+| `src/scomics/utils.py` | modify `proj`, add `proj_transform` |
+| `src/scomics/main.py` | update `proj_and_pcha`, `bootstrap_proj_pcha`; add `pcha_on_subset` |
 | `scripts/tutorial_per_sample.py` | new script (copy + extend from `tutorial_complete.py`) |
 
 ## Reused Utilities

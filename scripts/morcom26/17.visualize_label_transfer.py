@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 # --- file paths ---
 SCRIPTS_DIR          = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECT_ROOT         = os.path.dirname(SCRIPTS_DIR)
-REF_FILE             = '/home/qlyu/mydata/project/SingleCellArchetype/local_data/source/cheng22_yoo25/superdupermegaRNA_cheng22_IT_P28NR.h5ad'
+REF_FILE             = '/home/qlyu/mydata/project/scomics/local_data/source/cheng22_yoo25/superdupermegaRNA_cheng22_IT_P28NR.h5ad'
 TARGET_FILE          = os.path.join(PROJECT_ROOT, 'local_data', 'source', 'morcom26_cux2mice', 'P26_EN-L2-3-CTX_EN-L4-5-CTX_EN-L2-mix.h5ad')
 LABEL_TRANSFER_FILE  = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'morcom26', '16.label_transfer.tsv')
 OUT_FIG_DIR          = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'morcom26_cux2mice')

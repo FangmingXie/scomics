@@ -13,7 +13,7 @@ warnings.filterwarnings('ignore')
 
 # --- file paths ---
 SCRIPTS_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # .../scripts/
-PROJECT_ROOT  = os.path.dirname(SCRIPTS_DIR)                                   # .../SingleCellArchetype/
+PROJECT_ROOT  = os.path.dirname(SCRIPTS_DIR)                                   # .../scomics/
 INPUT_FILE    = os.path.join(PROJECT_ROOT, 'local_data', 'source', 'gao25', 'DevVIS_scRNA_AstroTE.h5ad')
 OUT_RES_DIR   = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro')
 OUT_STANDARD  = os.path.join(OUT_RES_DIR, '01.standard_results.parquet')

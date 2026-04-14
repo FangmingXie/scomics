@@ -1,6 +1,6 @@
-# SingleCellArchetype
+# scomics
 Go directly here **→**
-[![Open in colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/FangmingXie/SingleCellArchetype/blob/main/sca/tutorial_minimum.ipynb) for a short tutorial (~1 min).
+[![Open in colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/FangmingXie/scomics/blob/main/sca/tutorial_minimum.ipynb) for a short tutorial (~1 min).
 
 ## Table of Contents
 1. [Project overview](#Project-overview)
@@ -14,40 +14,40 @@ This repository contains code for **Archetypal Analysis** of single-cell RNA-seq
 
 The code base is a wrapper and extension of the [`ulfaslak/py_pcha`](https://github.com/ulfaslak/py_pcha) package that implements the **PCHA** algorithm.
 
-![img](https://github.com/FangmingXie/SingleCellArchetype/blob/main/data/img.png)
+![img](https://github.com/FangmingXie/scomics/blob/main/data/img.png)
 *Figure: Archetypal analysis of the transcriptomic continuum of L2/3 excitatory neurons (Xie et al. 2024).*
 
 ## Repository structure
 ```
-SingleCellArchetype/
+scomics/
 ├── README.md
 ├── data/
 │   └── data_snrna_v1.h5ad        # sample data
 └── sca/
     ├── utils.py                  # utility functions
-    ├── sca.py                    # the SingleCellArchetype class
+    ├── sca.py                    # the SCA class
     ├── tutorial_complete.ipynb   # a short tutorial (~1 min)
     └── tutorial_minimum.ipynb    # a long tutorial  (~10 min)
 ```
 
 ## Getting started
-Go directly [here](https://github.com/FangmingXie/SingleCellArchetype/blob/main/sca/tutorial_minimum.ipynb) or
-[![Open in colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/FangmingXie/SingleCellArchetype/blob/main/sca/tutorial_minimum.ipynb) for a short tutorial. You can run through this example application of Archetypal Analysis in your web browser in ~1 minute. No need to set up anything else.
+Go directly [here](https://github.com/FangmingXie/scomics/blob/main/sca/tutorial_minimum.ipynb) or
+[![Open in colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/FangmingXie/scomics/blob/main/sca/tutorial_minimum.ipynb) for a short tutorial. You can run through this example application of Archetypal Analysis in your web browser in ~1 minute. No need to set up anything else.
 
-Alternatively, you can also check out [this](https://github.com/FangmingXie/SingleCellArchetype/blob/main/sca/tutorial_complete.ipynb) complete tutorial.
+Alternatively, you can also check out [this](https://github.com/FangmingXie/scomics/blob/main/sca/tutorial_complete.ipynb) complete tutorial.
 
 ## Setting up locally
-Step 1. Download the sample data [here](https://raw.githubusercontent.com/FangmingXie/SingleCellArchetype/main/data/data_snrna_v1.h5ad)
+Step 1. Download the sample data [here](https://raw.githubusercontent.com/FangmingXie/scomics/main/data/data_snrna_v1.h5ad)
 or with the following command.
 ```
-wget 'https://raw.githubusercontent.com/FangmingXie/SingleCellArchetype/main/data/data_snrna_v1.h5ad'
+wget 'https://raw.githubusercontent.com/FangmingXie/scomics/main/data/data_snrna_v1.h5ad'
 ```
 
 Step 2. Install the packages
 ```
 pip install anndata # prerequisite
 pip install py_pcha # prerequisite
-git clone git@github.com:FangmingXie/SingleCellArchetype.git # this repo
+git clone git@github.com:FangmingXie/scomics.git # this repo
 ```
 
 Step 3. follow through the following tutorials in your own jupyter notebook or jupyter lab.

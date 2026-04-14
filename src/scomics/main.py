@@ -1,4 +1,4 @@
-"""SingleCellArchetype Class
+"""scomics main module
 """
 
 import numpy as np
@@ -16,7 +16,7 @@ class SCA():
             norm_mat - cell by gene feature matrix (depth normalized)
             types  - cell type labels per cell
         
-        Initiate the SingleCellArchetype object
+        Initiate the SCA object
 
         """
         # input

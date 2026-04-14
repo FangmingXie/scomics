@@ -1,5 +1,5 @@
 [project]
-name = "SingleCellArchetype"
+name = "scomics"
 version = "0.1.0"
 description = "Archetypal Analysis of scRNA-seq data"
 authors = [

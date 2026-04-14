@@ -3,7 +3,7 @@
 ## Repository Structure
 
 ```
-SingleCellArchetype/
+scomics/
 ├── CLAUDE.md
 ├── README.md
 ├── LICENSE
@@ -17,7 +17,7 @@ SingleCellArchetype/
 │   ├── dombrovski25/      # Dombrovski et al. 2025 analysis
 │   └── morcom26/          # Morcom et al. 2026 analysis
 └── src/
-    └── SingleCellArchetype/
+    └── scomics/
         ├── __init__.py
         ├── main.py
         └── utils.py
@@ -25,9 +25,7 @@ SingleCellArchetype/
 
 ## Git Branches
 
-- `main`: stable release branch
-- `dev`: development branch
-- `dev2`: active development branch (branched from `dev`)
+- `main`: active development branch
 
 ## Git Configuration
 
