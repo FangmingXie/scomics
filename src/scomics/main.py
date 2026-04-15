@@ -62,29 +62,29 @@ class SCA():
         else:
             raise ValueError('choose from (data, gshuff, tshuff)')
     
-    def proj_and_pcha(self, ndim, noc, skip_pc1=False, **kwargs):
+    def proj_and_pcha(self, ndim, noc, drop_pcs=None, **kwargs):
         """
         """
-        xp, pca_model = proj(self.xf, ndim, skip_pc1=skip_pc1)
+        xp, pca_model = proj(self.xf, ndim, drop_pcs=drop_pcs)
         aa, varexpl = pcha(xp.T, noc=noc, **kwargs)
 
         self.xp = xp
         self.aa = aa
         self.varexpl = varexpl
         self.pca_ = pca_model
-        self.skip_pc1_ = skip_pc1
+        self.drop_pcs_ = drop_pcs
         return (xp, aa, varexpl)
-        
+
     def bootstrap_proj_pcha(self, ndim, noc, nrepeats=10, which='cell',
-                           skip_pc1=False,
+                           drop_pcs=None,
                            is_bootstrap=True,
                            downsamp_p=None,
-                           preserve_embedding_sign=True, 
+                           preserve_embedding_sign=True,
                            seed=None,
-                           **kwargs): 
+                           **kwargs):
         """bootstrap or downsample (with a specified p)
         """
-        xp0, _ = proj(self.xf, ndim, skip_pc1=skip_pc1)
+        xp0, _ = proj(self.xf, ndim, drop_pcs=drop_pcs)
 
         aa_dsamps = []
         attempts = 0
@@ -98,7 +98,7 @@ class SCA():
                                     seed=seed,
                                     return_cond=True)
 
-            xp_dsamp, _ = proj(xn_dsamp, ndim, skip_pc1=skip_pc1)
+            xp_dsamp, _ = proj(xn_dsamp, ndim, drop_pcs=drop_pcs)
             # match sign
             if preserve_embedding_sign:
                 for dim in range(ndim):
@@ -113,20 +113,20 @@ class SCA():
             aa_dsamps.append(aa_dsamp)
 
         return aa_dsamps
-    
-    def t_ratio_test(self, ndim, noc, nrepeats=10, skip_pc1=False, **kwargs): 
+
+    def t_ratio_test(self, ndim, noc, nrepeats=10, drop_pcs=None, **kwargs):
         """
         """
-        
+
         self.setup_feature_matrix(method='data')
-        xp, aa, varexpl = self.proj_and_pcha(ndim, noc, skip_pc1=skip_pc1)
+        xp, aa, varexpl = self.proj_and_pcha(ndim, noc, drop_pcs=drop_pcs)
         t_ratio = get_t_ratio(xp, aa)
-        
+
         t_ratio_shuff_list = []
         for i in range(nrepeats):
             try:
                 self.setup_feature_matrix(method='gshuff')
-                xp_shuff, aa_shuff, varexpl_shuff = self.proj_and_pcha(ndim, noc, skip_pc1=skip_pc1)
+                xp_shuff, aa_shuff, varexpl_shuff = self.proj_and_pcha(ndim, noc, drop_pcs=drop_pcs)
                 t_ratio_shuff = get_t_ratio(xp_shuff, aa_shuff)
                 t_ratio_shuff_list.append(t_ratio_shuff)
             except Exception as e:
@@ -140,7 +140,7 @@ class SCA():
 
         return t_ratio, t_ratio_shuff_list, pvalue
 
-    def pcha_on_subset(self, mask, noc, skip_pc1=False, **kwargs):
+    def pcha_on_subset(self, mask, noc, drop_pcs=None, **kwargs):
         """Run PCHA on a cell subset using the globally-fitted PCA.
 
         Requires proj_and_pcha to have been called first (to fit self.pca_).
@@ -148,7 +148,7 @@ class SCA():
         Arguments:
             mask     - boolean array of length ncells selecting the subset
             noc      - number of archetypes
-            skip_pc1 - must match the value used in proj_and_pcha
+            drop_pcs - must match the value used in proj_and_pcha
 
         Returns:
             xp_sub  - projected subset (ncells_sub, ndim)
@@ -157,7 +157,7 @@ class SCA():
         """
         if not hasattr(self, 'pca_'):
             raise ValueError("Call proj_and_pcha first to fit the global PCA.")
-        xp_sub = proj_transform(self.xf[mask], self.pca_, skip_pc1=skip_pc1)
+        xp_sub = proj_transform(self.xf[mask], self.pca_, drop_pcs=drop_pcs)
         aa, varexpl = pcha(xp_sub.T, noc=noc, **kwargs)
         return xp_sub, aa, varexpl
         

@@ -35,51 +35,52 @@ def norm(x, depths):
 
     return xn
 
-def proj(x_norm, ndim, method='PCA', skip_pc1=False):
+def proj(x_norm, ndim, method='PCA', drop_pcs=None):
     """
-    Arguments: 
-        x_norm - normalized cell by gene feature matrix
-        ndim   - number of dimensions
+    Arguments:
+        x_norm   - normalized cell by gene feature matrix
+        ndim     - number of dimensions
+        drop_pcs - list of 0-based PC indices to drop (e.g. [1] drops PC2).
+                   None = drop the last fitted component (default behavior).
 
     Output:
-        x_proj - a low-dimensional representation of `x_norm` 
+        x_proj - a low-dimensional representation of `x_norm`
 
     Here we only implemented PCA - a common projection method widely used, including by
     Adler et al. 2019 and Xie et al. 2024 for the Achetypal Analysis of scRNA-seq data.
 
     In principle, one can also choose to use other projection methods as needed.
     """
-
+    n_fit = ndim + (len(drop_pcs) if drop_pcs is not None else 1)
     if method == 'PCA':
-        pca_model = PCA(n_components=ndim+1)
+        pca_model = PCA(n_components=n_fit)
         x_proj = pca_model.fit_transform(x_norm)
     else:
         raise ValueError('methods other than PCA are not implemented...')
 
-    # trim (last one or first one)
-    if skip_pc1:
-        x_proj = x_proj[:,1:]
+    if drop_pcs is not None:
+        x_proj = np.delete(x_proj, drop_pcs, axis=1)
     else:
-        x_proj = x_proj[:,:-1]
+        x_proj = x_proj[:, :-1]
 
     return x_proj, pca_model
 
-def proj_transform(x_norm, pca_model, skip_pc1=False):
+def proj_transform(x_norm, pca_model, drop_pcs=None):
     """Project data using an already-fitted PCA model (no re-fitting).
 
     Arguments:
         x_norm    - normalized cell by gene feature matrix
         pca_model - a fitted sklearn PCA object (from proj())
-        skip_pc1  - if True, drop PC1 and keep the next ndim components
+        drop_pcs  - list of 0-based PC indices to drop; must match value used in proj()
 
     Output:
         x_proj - low-dimensional projection of x_norm
     """
     x_proj = pca_model.transform(x_norm)
-    if skip_pc1:
-        x_proj = x_proj[:,1:]
+    if drop_pcs is not None:
+        x_proj = np.delete(x_proj, drop_pcs, axis=1)
     else:
-        x_proj = x_proj[:,:-1]
+        x_proj = x_proj[:, :-1]
     return x_proj
 
 def pcha(X, noc=3, delta=0, **kwargs):

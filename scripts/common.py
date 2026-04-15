@@ -16,7 +16,7 @@ def select_hvg(x_raw, depths_raw, n_top_genes):
     return mask
 
 
-def run_noc_sweep(sca, noc_grid, ndim, nrepeats, groups):
+def run_noc_sweep(sca, noc_grid, ndim, nrepeats, groups, drop_pcs=None):
     """Run PCHA + bootstrap ARV + per-group ARV for each NOC.
 
     Returns parallel lists: ev_grid, av_grid, av_rep_grid, xp_grid, aa_grid, aa_reps_grid.
@@ -27,9 +27,9 @@ def run_noc_sweep(sca, noc_grid, ndim, nrepeats, groups):
     xp_grid, aa_grid, aa_reps_grid = [], [], []
 
     for noc in noc_grid:
-        xp, aa, ev = sca.proj_and_pcha(ndim, noc)
+        xp, aa, ev = sca.proj_and_pcha(ndim, noc, drop_pcs=drop_pcs)
 
-        aa_boots = sca.bootstrap_proj_pcha(ndim, noc, nrepeats=nrepeats)
+        aa_boots = sca.bootstrap_proj_pcha(ndim, noc, nrepeats=nrepeats, drop_pcs=drop_pcs)
         av = get_relative_variation(aa_boots)
 
         aa_reps = []
@@ -38,7 +38,7 @@ def run_noc_sweep(sca, noc_grid, ndim, nrepeats, groups):
             if gmask.sum() < max(noc * 5, 20):
                 continue
             try:
-                _, aa_g, _ = sca.pcha_on_subset(gmask, noc)
+                _, aa_g, _ = sca.pcha_on_subset(gmask, noc, drop_pcs=drop_pcs)
             except Exception:
                 continue
             aa_reps.append((g, aa_g))
