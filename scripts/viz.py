@@ -444,6 +444,8 @@ def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None, pan
 
 def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
                            xlabel='Dim1', ylabel='Dim2',
+                           z=None, zlabel='Dim3',
+                           aa=None,
                            colorscale='RdBu_r',
                            pctile_low=9, pctile_high=95,
                            marker_size=3, marker_opacity=0.6,
@@ -452,48 +454,91 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
     """Save interactive 2D scatter HTML colored by gene expression with a gene dropdown.
 
     gene_vals: dict[str, np.ndarray] mapping gene name to per-cell float values (e.g. z-scores).
+    z:  optional array for a third dimension; when provided, adds a 3D panel alongside the 2D one.
+    aa: optional archetype coordinate array (ndim × noc); overlaid on both panels when provided.
     """
     genes = list(gene_vals.keys())
-    traces = []
+    has_3d = z is not None
+
+    if has_3d:
+        fig = make_subplots(
+            rows=1, cols=2,
+            specs=[[{'type': 'xy'}, {'type': 'scene'}]],
+            subplot_titles=[f'2D  {xlabel} vs {ylabel}', f'3D  {xlabel}–{zlabel}'],
+        )
+    else:
+        fig = go.Figure()
+
+    traces_per_gene = 2 if has_3d else 1
     for i, gene in enumerate(genes):
         vals = gene_vals[gene]
         cmin = np.nanpercentile(vals, pctile_low)
         cmax = np.nanpercentile(vals, pctile_high)
-        traces.append(go.Scatter(
-            x=x, y=y, mode='markers',
-            name=gene,
-            marker=dict(
-                size=marker_size,
-                color=vals,
-                colorscale=colorscale,
-                cmin=cmin, cmax=cmax,
-                opacity=marker_opacity,
-                showscale=True,
-                colorbar=dict(title=colorbar_title),
-            ),
-            visible=(i == 0),
-            showlegend=False,
-        ))
+        visible = (i == 0)
+        marker_2d = dict(size=marker_size, color=vals, colorscale=colorscale,
+                         cmin=cmin, cmax=cmax, opacity=marker_opacity,
+                         showscale=True, colorbar=dict(title=colorbar_title))
+        if has_3d:
+            fig.add_trace(go.Scatter(
+                x=x, y=y, mode='markers', name=gene,
+                marker=marker_2d, visible=visible, showlegend=False,
+            ), row=1, col=1)
+            fig.add_trace(go.Scatter3d(
+                x=x, y=y, z=z, mode='markers',
+                marker=dict(size=marker_size, color=vals, colorscale=colorscale,
+                            cmin=cmin, cmax=cmax, opacity=marker_opacity,
+                            showscale=False),
+                visible=visible, showlegend=False,
+            ), row=1, col=2)
+        else:
+            fig.add_trace(go.Scatter(
+                x=x, y=y, mode='markers', name=gene,
+                marker=marker_2d, visible=visible, showlegend=False,
+            ))
 
+    # archetype overlay traces (always visible — added after gene traces)
+    n_gene_traces = len(genes) * traces_per_gene
+    if aa is not None:
+        noc = aa.shape[1]
+        lg = 'archetypes'
+        if has_3d:
+            _add_archetype_2d(fig, aa, noc, lg, row=1, col=1, show_legend=True)
+            _add_archetype_3d(fig, aa, noc, lg, row=1, col=2)
+        else:
+            _add_archetype_2d(fig, aa, noc, lg, row=None, col=None, show_legend=True)
+
+    n_total = len(fig.data)
     buttons = []
     for i, gene in enumerate(genes):
-        vis = [j == i for j in range(len(genes))]
+        vis = [False] * n_total
+        for k in range(traces_per_gene):
+            vis[i * traces_per_gene + k] = True
+        # archetype traces are always visible
+        for j in range(n_gene_traces, n_total):
+            vis[j] = True
         buttons.append(dict(
             label=gene, method='update',
             args=[{'visible': vis}, {'title': f'{gene} — {title}'}],
         ))
 
-    fig = go.Figure(data=traces)
-    fig.update_layout(
+    layout_kwargs = dict(
         title=f'{genes[0]} — {title}',
-        xaxis_title=xlabel, yaxis_title=ylabel,
-        width=width, height=height,
+        width=width if not has_3d else max(width, 1100), height=height,
         updatemenus=[dict(
             type='dropdown', buttons=buttons,
             x=0.0, xanchor='left', y=1.07, yanchor='top',
             bgcolor='white', bordercolor='grey', font=dict(size=12),
         )],
     )
+    if has_3d:
+        fig.update_xaxes(title_text=xlabel, row=1, col=1)
+        fig.update_yaxes(title_text=ylabel, row=1, col=1)
+        fig.update_layout(**{_scene_key(2): dict(
+            xaxis_title=xlabel, yaxis_title=ylabel, zaxis_title=zlabel)})
+    else:
+        layout_kwargs['xaxis_title'] = xlabel
+        layout_kwargs['yaxis_title'] = ylabel
+    fig.update_layout(**layout_kwargs)
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
