@@ -186,7 +186,9 @@ def scatter_html(xp_grid, cell_metadata, title, out_path,
 
 
 def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
-                             noc_grid=(), ev_grid=(), av_grid=(), aa_grid=()):
+                             noc_grid=(), ev_grid=(), av_grid=(), aa_grid=(),
+                             ordered_labels=(),
+                             xlabel='PC1', ylabel='PC2', zlabel='PC3'):
     """Like scatter_html but uses per-category traces so the Plotly legend shows one entry per category.
 
     For categorical metadata: one 2D + one 3D trace per unique value; clicking a legend entry
@@ -195,6 +197,8 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
 
     Buttons switch which metadata label is active (all other label traces are hidden).
     Archetype traces are always visible.
+    ordered_labels: collection of metadata keys that should use evenly spaced turbo colors
+                    (e.g. time-ordered categories like Age).
     """
     xp = xp_grid[0]
     noc_entries = list(zip(noc_grid, ev_grid, av_grid, aa_grid))
@@ -231,8 +235,13 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
             ), row=1, col=2)
         except (ValueError, TypeError):
             str_vals = np.array([str(v) for v in values])
-            unique_vals = sorted(set(str_vals))
-            val_to_color = {v: cat_palette[i % len(cat_palette)] for i, v in enumerate(unique_vals)}
+            unique_vals = natsorted(set(str_vals))
+            n = len(unique_vals)
+            if label in ordered_labels:
+                cmap = cm.get_cmap('turbo', n)
+                val_to_color = {v: mcolors.to_hex(cmap(i / max(n - 1, 1))) for i, v in enumerate(unique_vals)}
+            else:
+                val_to_color = {v: cat_palette[i % len(cat_palette)] for i, v in enumerate(unique_vals)}
             for uv in unique_vals:
                 mask = str_vals == uv
                 color = val_to_color[uv]
@@ -250,9 +259,9 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
 
         label_trace_ranges[label] = (start_idx, len(fig.data))
 
-    fig.update_xaxes(title_text='PC1', row=1, col=1)
-    fig.update_yaxes(title_text='PC2', row=1, col=1)
-    fig.update_layout(**{_scene_key(2): dict(xaxis_title='PC1', yaxis_title='PC2', zaxis_title='PC3')})
+    fig.update_xaxes(title_text=xlabel, row=1, col=1)
+    fig.update_yaxes(title_text=ylabel, row=1, col=1)
+    fig.update_layout(**{_scene_key(2): dict(xaxis_title=xlabel, yaxis_title=ylabel, zaxis_title=zlabel)})
 
     arch_start = len(fig.data)
     for noc, ev, av, aa in noc_entries:
