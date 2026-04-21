@@ -59,13 +59,15 @@ hvg_mask = select_hvg(x[p56_mask], depths[p56_mask], N_TOP_GENES)
 xn = norm(x[:, hvg_mask], depths)
 xn_p56 = xn[p56_mask]
 
-# Fit joint PCA on P56 cells; project all postnatal cells
-pca_joint = PCA(n_components=N_DIMS_KNN)
-pca_joint.fit(xn_p56)
-xp_all = pca_joint.transform(xn)
-print(f'Joint PCA fitted on P56; projected all postnatal cells → shape {xp_all.shape}')
+# Fit PCA on P56 cells; project all postnatal cells; drop same PCs as PCHA step
+pca_project = PCA(n_components=N_DIMS_KNN)
+pca_project.fit(xn_p56)
+xp_all = pca_project.transform(xn)
+keep_pcs = [i for i in range(N_DIMS_KNN) if i not in DROP_PCS]
+xp_all   = xp_all[:, keep_pcs]
+print(f'PCA fitted on P56; projected all postnatal cells → shape {xp_all.shape}')
 
-pc_cols = [f'PC{i+1}' for i in range(N_DIMS_KNN)]
+pc_cols = [f'PC{i+1}' for i in keep_pcs]
 
 # P56 archetype assignment via PCHA
 sca = SCA(xn_p56, donors[p56_mask])

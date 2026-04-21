@@ -48,15 +48,15 @@ def _archetype_edges_3d(aa, noc):
     return ex, ey, ez
 
 
-def _add_archetype_2d(fig, aa, noc, lg, row, col, *, show_legend):
+def _add_archetype_2d(fig, aa, noc, lg, row, col, *, show_legend, cx=0, cy=1):
     """Add 2D archetype diamond markers and closing polygon (shared legendgroup lg)."""
     fig.add_trace(go.Scatter(
-        x=aa[0, :], y=aa[1, :], mode='markers',
+        x=aa[cx, :], y=aa[cy, :], mode='markers',
         marker=dict(size=8, color='black', symbol='diamond'),
         name=lg, showlegend=show_legend, legendgroup=lg,
     ), row=row, col=col)
     fig.add_trace(go.Scatter(
-        x=list(aa[0, :]) + [aa[0, 0]], y=list(aa[1, :]) + [aa[1, 0]], mode='lines',
+        x=list(aa[cx, :]) + [aa[cx, 0]], y=list(aa[cy, :]) + [aa[cy, 0]], mode='lines',
         line=dict(color='black', width=1.5),
         showlegend=False, legendgroup=lg,
     ), row=row, col=col)
@@ -75,6 +75,24 @@ def _add_archetype_3d(fig, aa, noc, lg, row, col, color='black', marker_size=6):
         line=dict(color=color, width=2),
         showlegend=False, legendgroup=lg,
     ), row=row, col=col)
+
+
+def _add_archetype_3d_scene(fig, aa, noc, lg, scene, color='black', marker_size=6):
+    """Like _add_archetype_3d but targets a named scene directly (bypasses row/col routing).
+
+    Use this for 3D subplots with colspan > 1 where row/col routing is unreliable.
+    """
+    fig.add_trace(go.Scatter3d(
+        x=aa[0, :], y=aa[1, :], z=aa[2, :], mode='markers',
+        marker=dict(size=marker_size, color=color, symbol='diamond'),
+        showlegend=False, legendgroup=lg, scene=scene,
+    ))
+    ex, ey, ez = _archetype_edges_3d(aa, noc)
+    fig.add_trace(go.Scatter3d(
+        x=ex, y=ey, z=ez, mode='lines',
+        line=dict(color=color, width=2),
+        showlegend=False, legendgroup=lg, scene=scene,
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +199,7 @@ def scatter_html(xp_grid, cell_metadata, title, out_path,
             buttons=buttons,
         )],
     )
+    fig.update_scenes(dragmode='orbit')
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
@@ -188,27 +207,61 @@ def scatter_html(xp_grid, cell_metadata, title, out_path,
 def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
                              noc_grid=(), ev_grid=(), av_grid=(), aa_grid=(),
                              ordered_labels=(),
-                             xlabel='PC1', ylabel='PC2', zlabel='PC3'):
+                             xlabel='PC1', ylabel='PC2', zlabel='PC3',
+                             panels=None, panel_3d=None,
+                             arch_vis=None):
     """Like scatter_html but uses per-category traces so the Plotly legend shows one entry per category.
 
-    For categorical metadata: one 2D + one 3D trace per unique value; clicking a legend entry
-    hides/shows that category across both panels.
-    For continuous metadata: single 2D + 3D trace with viridis colorscale.
+    For categorical metadata: one trace per unique value per panel; clicking a legend entry
+    hides/shows that category across all panels.
+    For continuous metadata: single trace per panel with viridis colorscale.
 
     Buttons switch which metadata label is active (all other label traces are hidden).
     Archetype traces are always visible.
     ordered_labels: collection of metadata keys that should use evenly spaced turbo colors
                     (e.g. time-ordered categories like Age).
+    panels: list of (col_x, col_y, xlabel, ylabel) tuples. When provided, renders one 2D
+            scatter per panel instead of the default 2D+3D layout.
+            Example: [(0,1,'PC1','PC3'), (0,2,'PC1','PC4'), (1,2,'PC3','PC4')]
+    panel_3d: (col_x, col_y, col_z, xlabel, ylabel, zlabel) tuple. When provided alongside
+              panels, appends a 3D scatter as the last subplot.
+              Example: (0,1,2,'PC1','PC3','PC4')
+    arch_vis: optional (n_vis_dims, noc) array of archetype positions in the visualization
+              coordinate system (e.g. centroids per archetype). When provided, overlays
+              diamond markers and connecting polygon on each panel.
     """
     xp = xp_grid[0]
     noc_entries = list(zip(noc_grid, ev_grid, av_grid, aa_grid))
     cat_palette = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-    fig = make_subplots(
-        rows=1, cols=2,
-        specs=[[{'type': 'xy'}, {'type': 'scene'}]],
-        subplot_titles=['2D  PC1 vs PC2', '3D  PC1–PC3'],
-    )
+    if panels is not None:
+        n2d = len(panels)
+        has_3d = panel_3d is not None
+        titles_2d = [f'{xl} vs {yl}' for _, _, xl, yl in panels]
+        if has_3d:
+            # 3D panel on row 2, spanning all columns
+            nrows, ncols = 2, n2d
+            specs = [
+                [{'type': 'xy'}] * n2d,
+                [{'type': 'scene', 'colspan': n2d}] + [None] * (n2d - 1),
+            ]
+            titles_3d = [f'3D  {panel_3d[3]}–{panel_3d[5]}']
+        else:
+            nrows, ncols = 1, n2d
+            specs = [[{'type': 'xy'}] * n2d]
+            titles_3d = []
+        fig = make_subplots(
+            rows=nrows, cols=ncols,
+            specs=specs,
+            subplot_titles=titles_2d + titles_3d,
+        )
+    else:
+        has_3d = True
+        fig = make_subplots(
+            rows=1, cols=2,
+            specs=[[{'type': 'xy'}, {'type': 'scene'}]],
+            subplot_titles=[f'2D  {xlabel} vs {ylabel}', f'3D  {xlabel}–{zlabel}'],
+        )
 
     labels = list(cell_metadata.keys())
     label_trace_ranges = {}  # label -> (start_idx, end_idx)
@@ -221,18 +274,35 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
             vals = np.array(values, dtype=float)
             vmin = np.nanpercentile(vals, 5)
             vmax = np.nanpercentile(vals, 95)
-            fig.add_trace(go.Scatter(
-                x=xp[:, 0], y=xp[:, 1], mode='markers',
-                marker=dict(size=2, color=vals, colorscale='Viridis', cmin=vmin, cmax=vmax,
-                            opacity=0.6, showscale=True),
-                name=label, showlegend=False, visible=visible,
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter3d(
-                x=xp[:, 0], y=xp[:, 1], z=xp[:, 2], mode='markers',
-                marker=dict(size=2, color=vals, colorscale='Viridis', cmin=vmin, cmax=vmax,
-                            opacity=0.6, showscale=False),
-                showlegend=False, visible=visible,
-            ), row=1, col=2)
+            if panels is not None:
+                for pi, (cx, cy, xl, yl) in enumerate(panels):
+                    fig.add_trace(go.Scatter(
+                        x=xp[:, cx], y=xp[:, cy], mode='markers',
+                        marker=dict(size=2, color=vals, colorscale='Viridis', cmin=vmin, cmax=vmax,
+                                    opacity=0.6, showscale=(pi == 0)),
+                        name=label, showlegend=False, visible=visible,
+                    ), row=1, col=pi + 1)
+                if panel_3d is not None:
+                    cx, cy, cz = panel_3d[:3]
+                    fig.add_trace(go.Scatter3d(
+                        x=xp[:, cx], y=xp[:, cy], z=xp[:, cz], mode='markers',
+                        marker=dict(size=2, color=vals, colorscale='Viridis', cmin=vmin, cmax=vmax,
+                                    opacity=0.6, showscale=False),
+                        showlegend=False, visible=visible,
+                    ), row=2, col=1)
+            else:
+                fig.add_trace(go.Scatter(
+                    x=xp[:, 0], y=xp[:, 1], mode='markers',
+                    marker=dict(size=2, color=vals, colorscale='Viridis', cmin=vmin, cmax=vmax,
+                                opacity=0.6, showscale=True),
+                    name=label, showlegend=False, visible=visible,
+                ), row=1, col=1)
+                fig.add_trace(go.Scatter3d(
+                    x=xp[:, 0], y=xp[:, 1], z=xp[:, 2], mode='markers',
+                    marker=dict(size=2, color=vals, colorscale='Viridis', cmin=vmin, cmax=vmax,
+                                opacity=0.6, showscale=False),
+                    showlegend=False, visible=visible,
+                ), row=1, col=2)
         except (ValueError, TypeError):
             str_vals = np.array([str(v) for v in values])
             unique_vals = natsorted(set(str_vals))
@@ -246,28 +316,70 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
                 mask = str_vals == uv
                 color = val_to_color[uv]
                 lg = f'{label}__{uv}'
-                fig.add_trace(go.Scatter(
-                    x=xp[mask, 0], y=xp[mask, 1], mode='markers',
-                    marker=dict(size=2, color=color, opacity=0.6),
-                    name=uv, legendgroup=lg, showlegend=True, visible=visible,
-                ), row=1, col=1)
-                fig.add_trace(go.Scatter3d(
-                    x=xp[mask, 0], y=xp[mask, 1], z=xp[mask, 2], mode='markers',
-                    marker=dict(size=2, color=color, opacity=0.6),
-                    showlegend=False, legendgroup=lg, visible=visible,
-                ), row=1, col=2)
+                if panels is not None:
+                    for pi, (cx, cy, xl, yl) in enumerate(panels):
+                        fig.add_trace(go.Scatter(
+                            x=xp[mask, cx], y=xp[mask, cy], mode='markers',
+                            marker=dict(size=2, color=color, opacity=0.6),
+                            name=uv, legendgroup=lg, showlegend=(pi == 0), visible=visible,
+                        ), row=1, col=pi + 1)
+                    if panel_3d is not None:
+                        cx, cy, cz = panel_3d[:3]
+                        fig.add_trace(go.Scatter3d(
+                            x=xp[mask, cx], y=xp[mask, cy], z=xp[mask, cz], mode='markers',
+                            marker=dict(size=2, color=color, opacity=0.6),
+                            showlegend=False, legendgroup=lg, visible=visible,
+                        ), row=2, col=1)
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=xp[mask, 0], y=xp[mask, 1], mode='markers',
+                        marker=dict(size=2, color=color, opacity=0.6),
+                        name=uv, legendgroup=lg, showlegend=True, visible=visible,
+                    ), row=1, col=1)
+                    fig.add_trace(go.Scatter3d(
+                        x=xp[mask, 0], y=xp[mask, 1], z=xp[mask, 2], mode='markers',
+                        marker=dict(size=2, color=color, opacity=0.6),
+                        showlegend=False, legendgroup=lg, visible=visible,
+                    ), row=1, col=2)
 
         label_trace_ranges[label] = (start_idx, len(fig.data))
 
-    fig.update_xaxes(title_text=xlabel, row=1, col=1)
-    fig.update_yaxes(title_text=ylabel, row=1, col=1)
-    fig.update_layout(**{_scene_key(2): dict(xaxis_title=xlabel, yaxis_title=ylabel, zaxis_title=zlabel)})
+    if panels is not None:
+        for pi, (cx, cy, xl, yl) in enumerate(panels):
+            fig.update_xaxes(title_text=xl, row=1, col=pi + 1)
+            fig.update_yaxes(title_text=yl, row=1, col=pi + 1)
+        if panel_3d is not None:
+            _, _, _, xl3, yl3, zl3 = panel_3d
+            fig.update_layout(scene=dict(xaxis_title=xl3, yaxis_title=yl3, zaxis_title=zl3))
+    else:
+        fig.update_xaxes(title_text=xlabel, row=1, col=1)
+        fig.update_yaxes(title_text=ylabel, row=1, col=1)
+        fig.update_layout(**{_scene_key(2): dict(xaxis_title=xlabel, yaxis_title=ylabel, zaxis_title=zlabel)})
 
     arch_start = len(fig.data)
     for noc, ev, av, aa in noc_entries:
         lg = f'NOC={noc}  EV={ev:.3f}  ARV={av:.3f}'
-        _add_archetype_2d(fig, aa, noc, lg, row=1, col=1, show_legend=True)
-        _add_archetype_3d(fig, aa, noc, lg, row=1, col=2)
+        if panels is not None:
+            for pi, (cx, cy, xl, yl) in enumerate(panels):
+                _add_archetype_2d(fig, aa, noc, lg, row=1, col=pi + 1, show_legend=(pi == 0), cx=cx, cy=cy)
+            if panel_3d is not None:
+                _add_archetype_3d_scene(fig, aa, noc, lg, scene='scene')
+        else:
+            _add_archetype_2d(fig, aa, noc, lg, row=1, col=1, show_legend=True)
+            _add_archetype_3d(fig, aa, noc, lg, row=1, col=2)
+
+    if arch_vis is not None:
+        noc_vis = arch_vis.shape[1]
+        lg = 'Archetypes'
+        if panels is not None:
+            for pi, (cx, cy, xl, yl) in enumerate(panels):
+                _add_archetype_2d(fig, arch_vis, noc_vis, lg, row=1, col=pi + 1, show_legend=(pi == 0), cx=cx, cy=cy)
+            if panel_3d is not None:
+                _add_archetype_3d_scene(fig, arch_vis, noc_vis, lg, scene='scene')
+        else:
+            _add_archetype_2d(fig, arch_vis, noc_vis, lg, row=1, col=1, show_legend=True)
+            _add_archetype_3d(fig, arch_vis, noc_vis, lg, row=1, col=2)
+
     n_total = len(fig.data)
 
     buttons = []
@@ -279,8 +391,13 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
         ]
         buttons.append(dict(label=label, method='update', args=[{'visible': vis}]))
 
+    if panels is not None:
+        width  = 550 * n2d
+        height = 1100 if panel_3d is not None else 600
+    else:
+        width, height = 1100, 600
     fig.update_layout(
-        title=title, width=1100, height=600,
+        title=title, width=width, height=height,
         legend=dict(itemsizing='constant'),
         updatemenus=[dict(
             type='buttons', direction='right',
@@ -288,6 +405,7 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
             buttons=buttons,
         )],
     )
+    fig.update_scenes(dragmode='orbit')
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
@@ -404,6 +522,7 @@ def scatter_per_group_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid
         fig.update_layout(**{_scene_key(col): dict(xaxis_title='PC1', yaxis_title='PC2', zaxis_title='PC3')})
 
     fig.update_layout(title=title, width=400 * ncols, height=500)
+    fig.update_scenes(dragmode='orbit')
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
@@ -459,58 +578,108 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
                            pctile_low=9, pctile_high=95,
                            marker_size=3, marker_opacity=0.6,
                            colorbar_title='z-score',
-                           width=850, height=700):
+                           width=850, height=700,
+                           xp=None, panels=None, panel_3d=None):
     """Save interactive 2D scatter HTML colored by gene expression with a gene dropdown.
 
     gene_vals: dict[str, np.ndarray] mapping gene name to per-cell float values (e.g. z-scores).
     z:  optional array for a third dimension; when provided, adds a 3D panel alongside the 2D one.
     aa: optional archetype coordinate array (ndim × noc); overlaid on both panels when provided.
+    xp: coordinate array (n_cells, n_dims); required when panels or panel_3d is provided.
+    panels: list of (col_x, col_y, xlabel, ylabel) — same semantics as scatter_categorical_html.
+    panel_3d: (col_x, col_y, col_z, xlabel, ylabel, zlabel) — placed on row 2, spanning all columns.
     """
     genes = list(gene_vals.keys())
-    has_3d = z is not None
 
-    if has_3d:
+    if panels is not None:
+        n2d = len(panels)
+        has_3d = panel_3d is not None
+        if has_3d:
+            nrows, ncols = 2, n2d
+            specs = [
+                [{'type': 'xy'}] * n2d,
+                [{'type': 'scene', 'colspan': n2d}] + [None] * (n2d - 1),
+            ]
+            titles_3d = [f'3D  {panel_3d[3]}–{panel_3d[5]}']
+        else:
+            nrows, ncols = 1, n2d
+            specs = [[{'type': 'xy'}] * n2d]
+            titles_3d = []
         fig = make_subplots(
-            rows=1, cols=2,
-            specs=[[{'type': 'xy'}, {'type': 'scene'}]],
-            subplot_titles=[f'2D  {xlabel} vs {ylabel}', f'3D  {xlabel}–{zlabel}'],
+            rows=nrows, cols=ncols,
+            specs=specs,
+            subplot_titles=[f'{xl} vs {yl}' for _, _, xl, yl in panels] + titles_3d,
         )
+        traces_per_gene = n2d + (1 if has_3d else 0)
     else:
-        fig = go.Figure()
+        has_3d = z is not None
+        if has_3d:
+            fig = make_subplots(
+                rows=1, cols=2,
+                specs=[[{'type': 'xy'}, {'type': 'scene'}]],
+                subplot_titles=[f'2D  {xlabel} vs {ylabel}', f'3D  {xlabel}–{zlabel}'],
+            )
+        else:
+            fig = go.Figure()
+        traces_per_gene = 2 if has_3d else 1
 
-    traces_per_gene = 2 if has_3d else 1
     for i, gene in enumerate(genes):
         vals = gene_vals[gene]
         cmin = np.nanpercentile(vals, pctile_low)
         cmax = np.nanpercentile(vals, pctile_high)
         visible = (i == 0)
-        marker_2d = dict(size=marker_size, color=vals, colorscale=colorscale,
-                         cmin=cmin, cmax=cmax, opacity=marker_opacity,
-                         showscale=True, colorbar=dict(title=colorbar_title))
-        if has_3d:
-            fig.add_trace(go.Scatter(
-                x=x, y=y, mode='markers', name=gene,
-                marker=marker_2d, visible=visible, showlegend=False,
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter3d(
-                x=x, y=y, z=z, mode='markers',
-                marker=dict(size=marker_size, color=vals, colorscale=colorscale,
-                            cmin=cmin, cmax=cmax, opacity=marker_opacity,
-                            showscale=False),
-                visible=visible, showlegend=False,
-            ), row=1, col=2)
+
+        if panels is not None:
+            for pi, (cx, cy, xl, yl) in enumerate(panels):
+                fig.add_trace(go.Scatter(
+                    x=xp[:, cx], y=xp[:, cy], mode='markers', name=gene,
+                    marker=dict(size=marker_size, color=vals, colorscale=colorscale,
+                                cmin=cmin, cmax=cmax, opacity=marker_opacity,
+                                showscale=(pi == 0), colorbar=dict(title=colorbar_title)),
+                    visible=visible, showlegend=False,
+                ), row=1, col=pi + 1)
+            if panel_3d is not None:
+                cx, cy, cz = panel_3d[:3]
+                fig.add_trace(go.Scatter3d(
+                    x=xp[:, cx], y=xp[:, cy], z=xp[:, cz], mode='markers',
+                    marker=dict(size=marker_size, color=vals, colorscale=colorscale,
+                                cmin=cmin, cmax=cmax, opacity=marker_opacity,
+                                showscale=False),
+                    visible=visible, showlegend=False,
+                ), row=2, col=1)
         else:
-            fig.add_trace(go.Scatter(
-                x=x, y=y, mode='markers', name=gene,
-                marker=marker_2d, visible=visible, showlegend=False,
-            ))
+            marker_2d = dict(size=marker_size, color=vals, colorscale=colorscale,
+                             cmin=cmin, cmax=cmax, opacity=marker_opacity,
+                             showscale=True, colorbar=dict(title=colorbar_title))
+            if has_3d:
+                fig.add_trace(go.Scatter(
+                    x=x, y=y, mode='markers', name=gene,
+                    marker=marker_2d, visible=visible, showlegend=False,
+                ), row=1, col=1)
+                fig.add_trace(go.Scatter3d(
+                    x=x, y=y, z=z, mode='markers',
+                    marker=dict(size=marker_size, color=vals, colorscale=colorscale,
+                                cmin=cmin, cmax=cmax, opacity=marker_opacity,
+                                showscale=False),
+                    visible=visible, showlegend=False,
+                ), row=1, col=2)
+            else:
+                fig.add_trace(go.Scatter(
+                    x=x, y=y, mode='markers', name=gene,
+                    marker=marker_2d, visible=visible, showlegend=False,
+                ))
 
     # archetype overlay traces (always visible — added after gene traces)
     n_gene_traces = len(genes) * traces_per_gene
     if aa is not None:
         noc = aa.shape[1]
         lg = 'archetypes'
-        if has_3d:
+        if panels is not None:
+            for pi, (cx, cy, xl, yl) in enumerate(panels):
+                _add_archetype_2d(fig, aa, noc, lg, row=1, col=pi + 1, show_legend=(pi == 0), cx=cx, cy=cy)
+            if panel_3d is not None:
+                _add_archetype_3d_scene(fig, aa, noc, lg, scene='scene')
+        elif has_3d:
             _add_archetype_2d(fig, aa, noc, lg, row=1, col=1, show_legend=True)
             _add_archetype_3d(fig, aa, noc, lg, row=1, col=2)
         else:
@@ -522,7 +691,6 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
         vis = [False] * n_total
         for k in range(traces_per_gene):
             vis[i * traces_per_gene + k] = True
-        # archetype traces are always visible
         for j in range(n_gene_traces, n_total):
             vis[j] = True
         buttons.append(dict(
@@ -530,24 +698,36 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
             args=[{'visible': vis}, {'title': f'{gene} — {title}'}],
         ))
 
-    layout_kwargs = dict(
+    if panels is not None:
+        for pi, (cx, cy, xl, yl) in enumerate(panels):
+            fig.update_xaxes(title_text=xl, row=1, col=pi + 1)
+            fig.update_yaxes(title_text=yl, row=1, col=pi + 1)
+        if panel_3d is not None:
+            _, _, _, xl3, yl3, zl3 = panel_3d
+            fig.update_layout(scene=dict(xaxis_title=xl3, yaxis_title=yl3, zaxis_title=zl3))
+        fig_width  = 550 * n2d
+        fig_height = 1100 if panel_3d is not None else 600
+    else:
+        if has_3d:
+            fig.update_xaxes(title_text=xlabel, row=1, col=1)
+            fig.update_yaxes(title_text=ylabel, row=1, col=1)
+            fig.update_layout(**{_scene_key(2): dict(
+                xaxis_title=xlabel, yaxis_title=ylabel, zaxis_title=zlabel)})
+        else:
+            fig.update_layout(xaxis_title=xlabel, yaxis_title=ylabel)
+        fig_width  = width if not has_3d else max(width, 1100)
+        fig_height = height
+
+    fig.update_layout(
         title=f'{genes[0]} — {title}',
-        width=width if not has_3d else max(width, 1100), height=height,
+        width=fig_width, height=fig_height,
         updatemenus=[dict(
             type='dropdown', buttons=buttons,
             x=0.0, xanchor='left', y=1.07, yanchor='top',
             bgcolor='white', bordercolor='grey', font=dict(size=12),
         )],
     )
-    if has_3d:
-        fig.update_xaxes(title_text=xlabel, row=1, col=1)
-        fig.update_yaxes(title_text=ylabel, row=1, col=1)
-        fig.update_layout(**{_scene_key(2): dict(
-            xaxis_title=xlabel, yaxis_title=ylabel, zaxis_title=zlabel)})
-    else:
-        layout_kwargs['xaxis_title'] = xlabel
-        layout_kwargs['yaxis_title'] = ylabel
-    fig.update_layout(**layout_kwargs)
+    fig.update_scenes(dragmode='orbit')
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
