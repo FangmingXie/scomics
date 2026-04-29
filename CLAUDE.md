@@ -10,6 +10,10 @@ scomics/
 ├── pyproject.toml
 ├── data/                  # sample data (tracked)
 ├── local_data/            # local/large data (gitignored)
+├── links/                 # curated symlinks to data inputs, organized by sub-project (gitignored)
+│   ├── astro/             # astrocyte sub-project (e.g. gao25_scrna_astro.h5ad)
+│   ├── it/                # IT neuron sub-project (e.g. cheng22, yoo25, gao25 IT datasets)
+│   └── l23_evo/           # L2/3 evolution sub-project (e.g. jorstad23 human L23 IT)
 ├── docs/                  # documentation
 ├── scripts/               # standalone analysis scripts, organized by dataset
 │   ├── common.py          # shared utilities for scripts
