@@ -527,25 +527,38 @@ def scatter_per_group_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid
     print(f"  Saved {out_path}")
 
 
-def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None, panel_width=500):
+def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None, panel_width=500,
+                     vertical=False):
     """Save an interactive stacked bar chart HTML with one panel per group.
 
     panel_data: list of (panel_title, group_order, frac_df) where frac_df is a
                 DataFrame indexed by group with celltypes as columns (values in [0,1]).
     celltypes:  ordered list of cell type names (stacking order).
     ct_colors:  dict mapping celltype -> hex color string. Defaults to tab10.
+    vertical:   if True, stack panels vertically (rows) instead of horizontally (cols).
     """
     if ct_colors is None:
         # cmap = cm.get_cmap('tab10', len(celltypes))
-        cmap = cm.get_cmap('tab10', 10) 
+        cmap = cm.get_cmap('tab10', 10)
         ct_colors = {ct: mcolors.to_hex(cmap(i)) for i, ct in enumerate(celltypes)}
-    fig = make_subplots(
-        rows=1, cols=len(panel_data),
-        subplot_titles=[pd_[0] for pd_ in panel_data],
-        shared_yaxes=True,
-    )
 
-    for col_idx, (panel_title, group_order, frac_df) in enumerate(panel_data, start=1):
+    n = len(panel_data)
+    if vertical:
+        fig = make_subplots(
+            rows=n, cols=1,
+            subplot_titles=[pd_[0] for pd_ in panel_data],
+            shared_xaxes=False,
+        )
+    else:
+        fig = make_subplots(
+            rows=1, cols=n,
+            subplot_titles=[pd_[0] for pd_ in panel_data],
+            shared_yaxes=True,
+        )
+
+    for idx, (panel_title, group_order, frac_df) in enumerate(panel_data, start=1):
+        row = idx if vertical else 1
+        col = 1 if vertical else idx
         for i, ct in enumerate(celltypes):
             fig.add_trace(go.Bar(
                 name=ct,
@@ -553,19 +566,20 @@ def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None, pan
                 y=frac_df.reindex(group_order)[ct].values,
                 marker_color=ct_colors[ct],
                 legendgroup=ct,
-                showlegend=(col_idx == 1),
-            ), row=1, col=col_idx)
+                showlegend=(idx == 1),
+            ), row=row, col=col)
 
     fig.update_layout(
         barmode='stack',
         title=title,
-        yaxis_title='Fraction of cells',
-        yaxis=dict(range=[0, 1]),
         legend=dict(itemsizing='constant', traceorder='normal'),
-        width=panel_width * len(panel_data),
-        height=600,
+        width=panel_width if vertical else panel_width * n,
+        height=600 * n if vertical else 600,
     )
     fig.update_xaxes(tickangle=45)
+    for i in range(1, n + 1):
+        yaxis_key = 'yaxis' if i == 1 else f'yaxis{i}'
+        fig.update_layout(**{yaxis_key: dict(range=[0, 1], title='Fraction of cells')})
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
