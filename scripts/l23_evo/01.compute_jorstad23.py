@@ -19,6 +19,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 INPUT_FILE   = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'jorstad23_human_WithinArea_L23IT.h5ad')
 OUT_RES_DIR  = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'l23_evo')
 OUT_PCA      = os.path.join(OUT_RES_DIR, '01.pca_coords.tsv')
+OUT_LOADINGS = os.path.join(OUT_RES_DIR, '01.pca_loadings.tsv')
 OUT_UMAP     = os.path.join(OUT_RES_DIR, '01.umap_coords.tsv')
 OUT_PC_CORR  = os.path.join(OUT_RES_DIR, '01.pc_covariate_corr.tsv')
 OUT_MARKERS  = os.path.join(OUT_RES_DIR, '01.markers.tsv')
@@ -44,6 +45,8 @@ print(adata)
 # adata.X is already log-normalized (float32, values ~2–12)
 X_norm = adata.X.toarray().astype(np.float32)
 print(f'X_norm shape: {X_norm.shape}, dtype: {X_norm.dtype}')
+
+gene_names = adata.var['feature_name'].values if 'feature_name' in adata.var.columns else adata.var_names.values
 
 # --- Part A: HVG + PCA + UMAP ---
 print(f'\nSelecting top {N_HVG} HVGs by variance...')
@@ -73,6 +76,16 @@ for col in METADATA_COLS:
 pca_df.to_csv(OUT_PCA, sep='\t')
 print(f'  Saved {OUT_PCA}')
 
+# save gene loadings (genes × PCs): components_.T shape (N_HVG, N_PCS)
+hvg_gene_names = gene_names[hvg_idx]
+loadings_df = pd.DataFrame(
+    pca_model.components_.T,
+    index=hvg_gene_names,
+    columns=pc_cols,
+)
+loadings_df.to_csv(OUT_LOADINGS, sep='\t')
+print(f'  Saved {OUT_LOADINGS}')
+
 # save UMAP
 umap_df = pd.DataFrame(X_umap, index=adata.obs_names, columns=['UMAP1', 'UMAP2'])
 for col in METADATA_COLS:
@@ -101,8 +114,6 @@ print(f'  Saved {OUT_PC_CORR}')
 print('\nFinding marker genes...')
 clusters = adata.obs[CLUSTER_COL].values
 unique_clusters = sorted(set(clusters))
-gene_names = adata.var['feature_name'].values if 'feature_name' in adata.var.columns else adata.var_names.values
-
 all_markers = []
 for c in unique_clusters:
     print(f'  Cluster {c}...')
