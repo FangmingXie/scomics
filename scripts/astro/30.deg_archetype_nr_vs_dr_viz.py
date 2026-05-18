@@ -18,6 +18,7 @@ INPUT_CHENG22     = os.path.join(PROJECT_ROOT, 'links', 'astro', 'cheng22_astro.
 DEG_DIR           = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro')
 FIG_DIR           = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'astro')
 OUT_HTML          = os.path.join(FIG_DIR, '30.gene_boxplot_NR_vs_DR.html')
+OUT_HTML_BAR      = os.path.join(FIG_DIR, '30.deg_count_barplot_NR_vs_DR.html')
 
 # --- config ---
 CHENG22_AGES  = ['P28', 'P28_dl', 'P28_dr', 'P38', 'P38_dr']  # same subset as script 26
@@ -27,6 +28,7 @@ ARCHETYPES    = natsorted(['Arch1', 'Arch2', 'Arch3', 'Arch4'])
 MANUAL_GENES  = ['Rfx4', 'Mertk', 'Trpm3', 'Cdh13', 'Cst3', 'Gfap']
 TOP_N_DEGS    = 3
 CONDITION_COLORS = {'NR': '#4C72B0', 'DR': '#DD8452'}
+LOG2FC_THRESH    = 0.5
 
 os.makedirs(FIG_DIR, exist_ok=True)
 
@@ -155,4 +157,29 @@ fig.update_layout(
 )
 fig.write_html(OUT_HTML)
 print(f'  Saved {OUT_HTML}')
+
+# --- barplot: count of significant DEGs per archetype ---
+print('Building DEG count barplot...')
+up_counts, dn_counts = [], []
+for arch in ARCHETYPES:
+    sig_path = os.path.join(DEG_DIR, f'29.deg_{arch}_NR_vs_DR_sig.tsv')
+    df_sig = pd.read_csv(sig_path, sep='\t')
+    up_counts.append((df_sig['log2FC'] > LOG2FC_THRESH).sum())
+    dn_counts.append((df_sig['log2FC'] < -LOG2FC_THRESH).sum())
+
+fig_bar = go.Figure([
+    go.Bar(name='Up (DR>NR)', x=ARCHETYPES, y=up_counts,
+           marker_color=CONDITION_COLORS['DR']),
+    go.Bar(name='Down (NR>DR)', x=ARCHETYPES, y=[-n for n in dn_counts],
+           marker_color=CONDITION_COLORS['NR']),
+])
+fig_bar.update_layout(
+    title='Significant DEGs per archetype (FDR<0.05, |log2FC|>1) — NR vs DR',
+    xaxis_title='Archetype',
+    yaxis_title='Gene count (up positive, down negative)',
+    barmode='overlay',
+    width=650, height=450,
+)
+fig_bar.write_html(OUT_HTML_BAR)
+print(f'  Saved {OUT_HTML_BAR}')
 print('Done.')
