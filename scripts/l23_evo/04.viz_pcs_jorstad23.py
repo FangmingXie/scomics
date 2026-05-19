@@ -1,4 +1,4 @@
-"""Scatter plots of cell-type-robust PC axes (PC2, PC3, PC5) — Jorstad23 L2/3 IT.
+"""Scatter plots of PC axes (PC1, PC2, PC3) — Jorstad23 L2/3 IT.
 
 Reads: local_data/res/l23_evo/01.pca_coords.tsv
 Output: local_data/fig/l23_evo/04.pcs_scatter.html
@@ -26,17 +26,16 @@ os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
 pca_df = pd.read_csv(IN_PCA, sep='\t', index_col=0)
 
-# PC indices (0-based): PC1=0, PC3=2, PC5=4
-pc_coords = pca_df[['PC2', 'PC3', 'PC5']].values
+pc_coords = pca_df[['PC1', 'PC2', 'PC3']].values
 cell_metadata = {col: pca_df[col].values for col in [CLUSTER_COL] + COVARIATE_COLS}
 
 scatter_categorical_html(
     xp_grid=[pc_coords],
     cell_metadata=cell_metadata,
-    title='Jorstad23 L2/3 IT — PC2 vs PC3 vs PC5 (cell-type axes)',
+    title='Jorstad23 L2/3 IT — PC1 vs PC2 vs PC3',
     out_path=OUT_HTML,
-    panels=[(0, 1, 'PC2', 'PC3'), (0, 2, 'PC2', 'PC5'), (1, 2, 'PC3', 'PC5')],
-    panel_3d=(0, 1, 2, 'PC2', 'PC3', 'PC5'),
+    panels=[(0, 1, 'PC1', 'PC2'), (0, 2, 'PC1', 'PC3'), (1, 2, 'PC2', 'PC3')],
+    panel_3d=(0, 1, 2, 'PC1', 'PC2', 'PC3'),
 )
 
 print(f'Saved {OUT_HTML}')
