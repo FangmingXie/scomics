@@ -1,14 +1,14 @@
-"""Gene expression scatter for Jorstad23 L2/3 IT archetypes (NOC=4).
+"""Gene expression scatter for Jorstad23 L2/3 IT archetypes (NOC=5).
 
-Shows top marker genes per archetype (from script 09) plus manually specified
+Shows top marker genes per archetype (from script 09.2) plus manually specified
 genes, plotted in the reprojected VX subspace (PC1/PC2/PC3).
 
 Reads:
   local_data/res/l23_evo/05.varimax_coords.tsv
-  local_data/res/l23_evo/09.archetype_markers.tsv
+  local_data/res/l23_evo/09.2.archetype_markers.tsv
   links/l23_evo/jorstad23_human_WithinArea_L23IT.h5ad
 Output:
-  local_data/fig/l23_evo/10.archetype_gene_expr.html
+  local_data/fig/l23_evo/10.2.archetype_gene_expr.html
 """
 
 import os
@@ -29,23 +29,23 @@ INPUT_FILE   = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'jorstad23_human_W
 OUT_RES_DIR  = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'l23_evo')
 OUT_FIG_DIR  = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'l23_evo')
 IN_VARIMAX   = os.path.join(OUT_RES_DIR, '05.varimax_coords.tsv')
-IN_MARKERS   = os.path.join(OUT_RES_DIR, '09.archetype_markers.tsv')
+IN_MARKERS   = os.path.join(OUT_RES_DIR, '09.2.archetype_markers.tsv')
 IN_LOADINGS  = os.path.join(OUT_RES_DIR, '05.varimax_loadings.tsv')
-OUT_HTML     = os.path.join(OUT_FIG_DIR, '10.archetype_gene_expr.html')
+OUT_HTML     = os.path.join(OUT_FIG_DIR, '10.2.archetype_gene_expr.html')
 
 # --- parameters ---
-VX_COLS         = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']
-NOC             = 4
-NDIM            = 5
+VX_COLS            = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']
+NOC                = 5
+NDIM               = 5
 N_TOP_GENES_VIZ    = 5    # top marker genes per archetype from TSV
 N_TOP_GENES_PER_VX = 5    # top genes by |loading| per subtype-informative VX component
-N_DOWNSAMPLE    = 5000    # cells to plot (None = all)
-CLUSTER_COL     = 'WithinArea_cluster'
-EXTRA_GENES     = ['MEIS2', 'SOX5', 'SORCS3', 'TRPC6', 'CHRM2', 'RFX3', 'PCDH15', 'NPAS4']
+N_DOWNSAMPLE       = 5000
+CLUSTER_COL        = 'WithinArea_cluster'
+EXTRA_GENES        = ['MEIS2', 'SOX5', 'SORCS3', 'TRPC6', 'CHRM2', 'RFX3', 'PCDH15', 'NPAS4']
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
-# --- fit PCHA at NOC=4 to get reprojected coords and archetype positions ---
+# --- fit PCHA at NOC=5 to get reprojected coords and archetype positions ---
 print(f'Fitting PCHA: NOC={NOC}, NDIM={NDIM}...')
 vx_df = pd.read_csv(IN_VARIMAX, sep='\t', index_col=0)
 xn    = vx_df[VX_COLS].values
