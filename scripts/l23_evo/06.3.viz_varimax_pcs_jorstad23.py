@@ -51,6 +51,7 @@ scatter_categorical_html(
     panels=[(0, 1, 'PC1', 'PC2'), (0, 2, 'PC1', 'PC3'), (1, 2, 'PC2', 'PC3')],
     panel_3d=(0, 1, 2, 'PC1', 'PC2', 'PC3'),
     arch_vis=sca.aa,
+    height=1600,
 )
 
 print(f'Saved {OUT_HTML}')

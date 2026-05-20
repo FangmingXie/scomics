@@ -209,7 +209,8 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
                              ordered_labels=(),
                              xlabel='PC1', ylabel='PC2', zlabel='PC3',
                              panels=None, panel_3d=None,
-                             arch_vis=None):
+                             arch_vis=None,
+                             height=None):
     """Like scatter_html but uses per-category traces so the Plotly legend shows one entry per category.
 
     For categorical metadata: one trace per unique value per panel; clicking a legend entry
@@ -392,12 +393,12 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
         buttons.append(dict(label=label, method='update', args=[{'visible': vis}]))
 
     if panels is not None:
-        width  = 550 * n2d
-        height = 1100 if panel_3d is not None else 600
+        width         = 550 * n2d
+        default_height = 1100 if panel_3d is not None else 600
     else:
-        width, height = 1100, 600
+        width, default_height = 1100, 600
     fig.update_layout(
-        title=title, width=width, height=height,
+        title=title, width=width, height=height if height is not None else default_height,
         legend=dict(itemsizing='constant'),
         updatemenus=[dict(
             type='buttons', direction='right',
