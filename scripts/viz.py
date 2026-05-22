@@ -594,6 +594,7 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
                            marker_size=3, marker_opacity=0.6,
                            colorbar_title='z-score',
                            width=850, height=700,
+                           bg_color=None,
                            xp=None, panels=None, panel_3d=None):
     """Save interactive 2D scatter HTML colored by gene expression with a gene dropdown.
 
@@ -733,7 +734,7 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
         fig_width  = width if not has_3d else max(width, 1100)
         fig_height = height
 
-    fig.update_layout(
+    layout_kwargs = dict(
         title=f'{genes[0]} — {title}',
         width=fig_width, height=fig_height,
         updatemenus=[dict(
@@ -742,6 +743,10 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
             bgcolor='white', bordercolor='grey', font=dict(size=12),
         )],
     )
+    if bg_color is not None:
+        layout_kwargs['paper_bgcolor'] = bg_color
+        layout_kwargs['plot_bgcolor'] = bg_color
+    fig.update_layout(**layout_kwargs)
     fig.update_scenes(dragmode='orbit')
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
