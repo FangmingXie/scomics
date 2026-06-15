@@ -157,8 +157,6 @@ cython_debug/
 # Local data
 local_data/
 
-# Symlinks to local data inputs (machine-specific paths)
-links/
 
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

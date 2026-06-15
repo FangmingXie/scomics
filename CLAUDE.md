@@ -49,6 +49,7 @@ scomics/
 ## .gitignore Notes
 
 - `local_data/` is gitignored (for large or local-only data files)
+- `links/` is tracked (curated symlinks to data inputs)
 
 ## coding styles
 - Define all file paths (input and output files) in the beginning of each script as much as possible. Capitalize the variables that store these file paths.
