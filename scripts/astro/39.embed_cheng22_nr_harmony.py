@@ -19,7 +19,6 @@ import anndata as ad
 import scipy.sparse as sp
 from sklearn.decomposition import PCA
 from sklearn.neighbors import NearestNeighbors
-from scipy.stats import zscore
 import igraph as ig
 import leidenalg
 import umap
@@ -37,7 +36,6 @@ IN_COMBINED_LABELS = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro', '2
 OUT_RES_DIR        = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro')
 OUT_FIG_DIR        = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'astro')
 OUT_H5AD           = os.path.join(OUT_RES_DIR, '39.cheng22_nr_harmony.h5ad')
-OUT_HTML           = os.path.join(OUT_FIG_DIR, '39.umap.html')
 
 LABELED_AGES      = ['P28', 'P28_dl', 'P28_dr', 'P38', 'P38_dr']
 NR_AGES           = ['P28', 'P38']
@@ -46,7 +44,6 @@ N_PCS             = 10
 MIN_CELLS         = 50
 N_NEIGHBORS       = 30
 LEIDEN_RESOLUTION = 0.5
-GENES             = ['Gfap', 'Apoe', 'Mfge8', 'Id3', 'Lama3', 'Trpm3', 'Il33']
 
 os.makedirs(OUT_RES_DIR, exist_ok=True)
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
@@ -201,49 +198,4 @@ adata_out.varm['VX_loadings']  = vx_loadings.astype(np.float32)
 
 adata_out.write_h5ad(OUT_H5AD)
 print(f'Saved {OUT_H5AD}')
-
-# --- gene expression for visualization ---
-print('Extracting gene expression for visualization...')
-missing = [g for g in GENES if g not in adata.var_names]
-if missing:
-    raise ValueError(f'Genes not found: {missing}')
-gene_idx = {g: np.where(adata.var_names == g)[0][0] for g in GENES}
-
-x_genes = x[nr_indices, :][:, [gene_idx[g] for g in GENES]]
-depths_nr = depths[nr_indices]
-x_lognorm = np.log2(1 + x_genes / depths_nr[:, None] * 1e4)
-gene_vals = {g: zscore(x_lognorm[:, i]) for i, g in enumerate(GENES)}
-gene_vals['library_size'] = zscore(depths_nr)
-
-# --- visualizations ---
-from viz import scatter_2d_categorical_html, gene_expr_scatter_html
-
-print('Building categorical UMAP panel...')
-html1 = scatter_2d_categorical_html(
-    xp_grid=[umap_coords],
-    cell_metadata={
-        'Type':      adata_out.obs['Type'].values,
-        'archetype': arch_labels,
-        'leiden':    leiden_labels,
-        'Sample':    donors[nr_indices],
-    },
-    title='cheng22 NR astrocytes (P28+P38) — UMAP (Harmony donor-corrected)',
-    out_path=None,
-    xlabel='UMAP1', ylabel='UMAP2',
-    return_html=True,
-)
-
-print('Building gene expression UMAP panel...')
-html2 = gene_expr_scatter_html(
-    x=umap_coords[:, 0], y=umap_coords[:, 1],
-    gene_vals=gene_vals,
-    title='cheng22 NR astrocytes — gene expression (Harmony donor-corrected)',
-    out_path=None,
-    xlabel='UMAP1', ylabel='UMAP2',
-    return_html=True,
-)
-
-with open(OUT_HTML, 'w') as f:
-    f.write(f'<html><body>{html1}{html2}</body></html>')
-print(f'Saved {OUT_HTML}')
 print('Done.')
