@@ -28,6 +28,7 @@ OUT_FIG_SCATTER    = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'cux2cre', 
 OUT_FIG_VX_SCATTER = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'cux2cre', '06.l23_pca_vx_scatter.html')
 OUT_FIG_DENSITY    = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'cux2cre', '06.l23_pca_pc13_density.html')
 OUT_FIG_VX_DENSITY = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'cux2cre', '06.l23_pca_vx13_density.html')
+OUT_FIG_CELLTYPE   = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'cux2cre', '06.l23_celltype_proportion.html')
 
 UMAP_X_MAX  = -4
 UMAP_Y_MAX  = 10
@@ -219,5 +220,48 @@ _density_fig(xp_wt, xp_cux2cre, 0, 2, 'PC1', 'PC3',
 _density_fig(vx_wt, vx_cux2cre, 0, 2, 'VX1', 'VX3',
              'VX1 vs VX3 density (varimax on 5 PCs, wt-PCA) — jainlab26 L2/3',
              OUT_FIG_VX_DENSITY)
+
+# --- Cell type proportion stacked 100% barplot ---
+ct_wt      = pd.Series(wt.obs['Type_transferred'].values).value_counts(normalize=True).rename('wt')
+ct_cux2cre = pd.Series(cux2cre.obs['Type_transferred'].values).value_counts(normalize=True).rename('cux2cre')
+ct_prop    = pd.concat([ct_wt, ct_cux2cre], axis=1).fillna(0).sort_index()
+
+import matplotlib as mpl
+colors = [mpl.colors.to_hex(f'C{i}') for i in range(len(ct_prop))]
+
+# Panel 1: stacked 100% (x = group, color = cell type)
+fig_stacked = go.Figure()
+for ct, color in zip(ct_prop.index, colors):
+    fig_stacked.add_trace(go.Bar(
+        name=ct, x=['wt', 'cux2cre'],
+        y=[ct_prop.loc[ct, 'wt'] * 100, ct_prop.loc[ct, 'cux2cre'] * 100],
+        marker_color=color,
+    ))
+fig_stacked.update_layout(
+    barmode='stack',
+    title='Cell type proportion — jainlab26 L2/3',
+    xaxis_title='Group', yaxis_title='Proportion (%)',
+    height=500, width=500, legend=dict(x=1.02, y=1.0),
+)
+
+# Panel 2: grouped (x = cell type, two bars per type)
+fig_grouped = go.Figure()
+fig_grouped.add_trace(go.Bar(name='wt',      x=ct_prop.index,
+                             y=ct_prop['wt']      * 100, marker_color='steelblue'))
+fig_grouped.add_trace(go.Bar(name='cux2cre', x=ct_prop.index,
+                             y=ct_prop['cux2cre'] * 100, marker_color='tomato'))
+fig_grouped.update_layout(
+    barmode='group',
+    title='Cell type proportion — jainlab26 L2/3',
+    xaxis_title='Cell type', yaxis_title='Proportion (%)',
+    height=500, width=700, legend=dict(x=0.85, y=0.95),
+)
+
+html_stacked = fig_stacked.to_html(full_html=False, include_plotlyjs='cdn')
+html_grouped = fig_grouped.to_html(full_html=False, include_plotlyjs=False)
+with open(OUT_FIG_CELLTYPE, 'w') as f:
+    f.write('<html><body style="display:flex;gap:20px;">'
+            + html_stacked + html_grouped + '</body></html>')
+print(f'Saved → {OUT_FIG_CELLTYPE}')
 
 print('Done.')

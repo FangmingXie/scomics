@@ -70,3 +70,12 @@ scomics/
 - **Clean module organization** - each module has a single, clear purpose
 
 This approach ensures the codebase remains maintainable and forces explicit dependencies that make the architecture clear to all developers.
+
+## Claude Code Automation Rules
+- When operating in Plan Mode, ALWAYS save the finalized implementation plan as a distinct markdown file under the `plan/` folder before concluding the turn.
+- Never execute modifications while Plan Mode is toggled active.
+
+## ⚠️ **IMPORTANT: Installing a package
+- do not attempt to install new packages without asking permission explicitly. 
+- before installing anything new, save a copy of the current package list under `env/`. 
+- always try using conda first, and pip later. 

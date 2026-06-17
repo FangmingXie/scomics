@@ -604,7 +604,8 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
                            colorbar_title='z-score',
                            width=850, height=700,
                            bg_color=None,
-                           xp=None, panels=None, panel_3d=None):
+                           xp=None, panels=None, panel_3d=None,
+                           return_html=False):
     """Save interactive 2D scatter HTML colored by gene expression with a gene dropdown.
 
     gene_vals: dict[str, np.ndarray] mapping gene name to per-cell float values (e.g. z-scores).
@@ -757,6 +758,8 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
         layout_kwargs['plot_bgcolor'] = bg_color
     fig.update_layout(**layout_kwargs)
     fig.update_scenes(dragmode='orbit')
+    if return_html:
+        return fig.to_html(full_html=False, include_plotlyjs='cdn')
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
