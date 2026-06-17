@@ -9,6 +9,8 @@ Reads:
 Outputs:
   local_data/res/astro/39.cheng22_nr_harmony.h5ad
   local_data/fig/astro/39.umap.html
+  local_data/fig/astro/39.pc12.html
+  local_data/fig/astro/39.vx12.html
 """
 
 import os
@@ -29,6 +31,7 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, 'scripts'))
 
 from common import select_hvg
 from scomics.utils import norm
+from viz import scatter_2d_categorical_html, gene_expr_scatter_html
 
 # --- file paths ---
 INPUT_H5AD         = os.path.join(PROJECT_ROOT, 'links', 'astro', 'cheng22_astro.h5ad')
@@ -36,6 +39,9 @@ IN_COMBINED_LABELS = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro', '2
 OUT_RES_DIR        = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro')
 OUT_FIG_DIR        = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'astro')
 OUT_H5AD           = os.path.join(OUT_RES_DIR, '39.cheng22_nr_harmony.h5ad')
+OUT_UMAP           = os.path.join(OUT_FIG_DIR, '39.umap.html')
+OUT_PC12           = os.path.join(OUT_FIG_DIR, '39.pc12.html')
+OUT_VX12           = os.path.join(OUT_FIG_DIR, '39.vx12.html')
 
 LABELED_AGES      = ['P28', 'P28_dl', 'P28_dr', 'P38', 'P38_dr']
 NR_AGES           = ['P28', 'P38']
@@ -44,6 +50,7 @@ N_PCS             = 10
 MIN_CELLS         = 50
 N_NEIGHBORS       = 30
 LEIDEN_RESOLUTION = 0.5
+GENES             = ['Gfap', 'Apoe', 'Mfge8', 'Id3', 'Lama3', 'Trpm3', 'Il33']
 
 os.makedirs(OUT_RES_DIR, exist_ok=True)
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
@@ -198,4 +205,57 @@ adata_out.varm['VX_loadings']  = vx_loadings.astype(np.float32)
 
 adata_out.write_h5ad(OUT_H5AD)
 print(f'Saved {OUT_H5AD}')
+
+# --- gene values from z-scored adata_out.X ---
+print('Extracting gene expression for visualization...')
+present = [g for g in GENES if g in adata_out.var_names]
+missing = [g for g in GENES if g not in adata_out.var_names]
+if missing:
+    print(f'  Warning: genes not in HVG set, skipping: {missing}')
+X_dense = adata_out.X.toarray() if hasattr(adata_out.X, 'toarray') else np.array(adata_out.X)
+gene_vals = {g: X_dense[:, adata_out.var_names.get_loc(g)] for g in present}
+gene_vals['library_size'] = adata_out.obs['depth'].values
+
+cell_metadata = {
+    'Type':      adata_out.obs['Type'].values,
+    'archetype': arch_labels,
+    'leiden':    leiden_labels,
+    'Sample':    donors[nr_indices],
+}
+
+
+def _make_html(coords, xlabel, ylabel, title_cat, title_gene):
+    html_cat = scatter_2d_categorical_html(
+        xp_grid=[coords], cell_metadata=cell_metadata,
+        title=title_cat, out_path=None,
+        xlabel=xlabel, ylabel=ylabel, return_html=True,
+    )
+    html_gene = gene_expr_scatter_html(
+        x=coords[:, 0], y=coords[:, 1], gene_vals=gene_vals,
+        title=title_gene, out_path=None,
+        xlabel=xlabel, ylabel=ylabel, return_html=True,
+    )
+    return f'<html><body>{html_cat}{html_gene}</body></html>'
+
+
+print('Building UMAP HTML...')
+with open(OUT_UMAP, 'w') as f:
+    f.write(_make_html(umap_coords, 'UMAP1', 'UMAP2',
+                       'cheng22 NR astrocytes — UMAP (Harmony corrected)',
+                       'cheng22 NR astrocytes — gene expression on UMAP'))
+print(f'Saved {OUT_UMAP}')
+
+print('Building PC1-2 HTML...')
+with open(OUT_PC12, 'w') as f:
+    f.write(_make_html(pca_scores[:, :2], 'PC1', 'PC2',
+                       'cheng22 NR astrocytes — PC1 vs PC2 (raw PCA)',
+                       'cheng22 NR astrocytes — gene expression on PC1-2'))
+print(f'Saved {OUT_PC12}')
+
+print('Building VX1-2 HTML...')
+with open(OUT_VX12, 'w') as f:
+    f.write(_make_html(vx_scores[:, :2], 'VX1', 'VX2',
+                       'cheng22 NR astrocytes — VX1 vs VX2 (varimax on Harmony)',
+                       'cheng22 NR astrocytes — gene expression on VX1-2'))
+print(f'Saved {OUT_VX12}')
 print('Done.')
