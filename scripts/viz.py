@@ -210,7 +210,8 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
                              xlabel='PC1', ylabel='PC2', zlabel='PC3',
                              panels=None, panel_3d=None,
                              arch_vis=None,
-                             height=None):
+                             height=None,
+                             equal_aspect=False):
     """Like scatter_html but uses per-category traces so the Plotly legend shows one entry per category.
 
     For categorical metadata: one trace per unique value per panel; clicking a legend entry
@@ -406,13 +407,18 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
             buttons=buttons,
         )],
     )
+    if equal_aspect and panels is not None:
+        for pi in range(n2d):
+            xref = 'x' if pi == 0 else f'x{pi + 1}'
+            fig.update_yaxes(scaleanchor=xref, scaleratio=1, row=1, col=pi + 1)
     fig.update_scenes(dragmode='orbit')
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
 
 def scatter_2d_categorical_html(xp_grid, cell_metadata, title, out_path,
-                                xlabel='Dim1', ylabel='Dim2', ordered_labels=()):
+                                xlabel='Dim1', ylabel='Dim2', ordered_labels=(),
+                                return_html=False):
     """Like scatter_categorical_html but a single 2D panel only.
 
     Useful for UMAP or any 2D embedding where a 3D view is not meaningful.
@@ -420,6 +426,7 @@ def scatter_2d_categorical_html(xp_grid, cell_metadata, title, out_path,
     ordered_labels: collection of metadata keys that should use evenly spaced
                     viridis colors (e.g. time-ordered categories like Age).
                     All other categorical labels use the default color cycle.
+    return_html: if True, return an HTML string instead of writing to out_path.
     """
     xp = xp_grid[0]
     cat_palette = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -481,6 +488,8 @@ def scatter_2d_categorical_html(xp_grid, cell_metadata, title, out_path,
             buttons=buttons,
         )],
     )
+    if return_html:
+        return fig.to_html(full_html=False, include_plotlyjs='cdn')
     fig.write_html(out_path)
     print(f"  Saved {out_path}")
 
