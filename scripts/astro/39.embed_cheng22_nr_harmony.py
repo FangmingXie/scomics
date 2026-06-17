@@ -1,7 +1,8 @@
 """PCA + Harmony donor correction + varimax + UMAP + Leiden for cheng22 P28NR + P38NR astrocytes.
 
-Identical to script 37 except Harmony batch correction (by Sample) is applied to PCA scores
-before varimax rotation, UMAP, and Leiden clustering.
+Extends script 37 with two correction steps:
+  1. Library size regressed out from normalized expression (before PCA).
+  2. Harmony donor batch correction applied to PCA scores (before varimax/UMAP/Leiden).
 
 Reads:
   links/astro/cheng22_astro.h5ad
@@ -20,6 +21,7 @@ import pandas as pd
 import anndata as ad
 import scipy.sparse as sp
 from sklearn.decomposition import PCA
+from sklearn.linear_model import LinearRegression
 from sklearn.neighbors import NearestNeighbors
 import igraph as ig
 import leidenalg
@@ -134,6 +136,13 @@ print(f'  HVGs selected: {hvg_mask.sum()}')
 # --- normalize (CP10k → log2(1+x) → z-score per gene) ---
 xn = norm(x[:, hvg_mask], depths)
 xn_nr = xn[nr_indices]
+
+# --- regress out library size from expression space ---
+print('Regressing out library size...')
+log_depth = np.log(depths[nr_indices]).reshape(-1, 1)
+reg = LinearRegression().fit(log_depth, xn_nr)
+xn_nr = xn_nr - reg.predict(log_depth)
+print(f'  Done; xn_nr shape: {xn_nr.shape}')
 
 # --- PCA on all NR cells ---
 print(f'Fitting PCA (N_PCS={N_PCS}) on all NR cells...')
