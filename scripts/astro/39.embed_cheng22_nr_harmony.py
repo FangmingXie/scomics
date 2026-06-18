@@ -215,15 +215,16 @@ adata_out.varm['VX_loadings']  = vx_loadings.astype(np.float32)
 adata_out.write_h5ad(OUT_H5AD)
 print(f'Saved {OUT_H5AD}')
 
-# --- gene values from z-scored adata_out.X ---
+# --- gene values: log2(CP10k) from raw counts ---
 print('Extracting gene expression for visualization...')
-present = [g for g in GENES if g in adata_out.var_names]
-missing = [g for g in GENES if g not in adata_out.var_names]
+missing = [g for g in GENES if g not in adata.var_names]
 if missing:
-    print(f'  Warning: genes not in HVG set, skipping: {missing}')
-X_dense = adata_out.X.toarray() if hasattr(adata_out.X, 'toarray') else np.array(adata_out.X)
-gene_vals = {g: X_dense[:, adata_out.var_names.get_loc(g)] for g in present}
-gene_vals['library_size'] = adata_out.obs['depth'].values
+    raise ValueError(f'Genes not found: {missing}')
+gene_idx = {g: np.where(adata.var_names == g)[0][0] for g in GENES}
+x_genes = x[nr_indices][:, [gene_idx[g] for g in GENES]]
+x_lognorm = np.log2(1 + x_genes / depths[nr_indices].reshape(-1, 1) * 1e4)
+gene_vals = {g: x_lognorm[:, i] for i, g in enumerate(GENES)}
+gene_vals['library_size'] = depths[nr_indices]
 
 cell_metadata = {
     'Type':      adata_out.obs['Type'].values,
