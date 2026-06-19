@@ -483,7 +483,7 @@ def scatter_2d_categorical_html(xp_grid, cell_metadata, title, out_path,
         width=700, height=600,
         legend=dict(itemsizing='constant'),
         updatemenus=[dict(
-            type='buttons', direction='right',
+            type='dropdown',
             x=0.0, xanchor='left', y=1.05, yanchor='bottom',
             buttons=buttons,
         )],
