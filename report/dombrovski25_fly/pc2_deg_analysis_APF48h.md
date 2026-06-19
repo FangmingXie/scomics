@@ -30,10 +30,12 @@
 
 ## Results
 
-### Significant DEGs
-49 genes passed both thresholds (FDR < 0.05, |Log2FC| > 1):
-- **35 up in high PC2** (bin08+09)
-- **14 up in low PC2** (bin00+01)
+### Significant DEGs at varying Log2FC thresholds
+
+| \|Log2FC\| threshold | Total | Up in high PC2 | Up in low PC2 |
+|---|---|---|---|
+| > log2(1.5) ≈ 0.585 | 185 | 118 | 67 |
+| > 1.0 (2-fold) | 49 | 35 | 14 |
 
 ### Top hits
 
@@ -49,12 +51,12 @@
 | beat-VI | −1.33 | 5.6×10⁻³³ | low PC2 |
 
 ### Genes of interest
-| Gene | Significant | Log2FC | Note |
-|---|---|---|---|
-| dpr13 | Yes | −2.60 | strongly enriched in low PC2 |
-| beat-VI | Yes | −1.33 | enriched in low PC2 |
-| DIP-ε | No | −0.09 | FDR passes but |Log2FC| < 1 |
-| side-II | No | +0.37 | FDR passes but |Log2FC| < 1 |
+| Gene | Log2FC | FDR | Sig at \|Log2FC\|>1 | Sig at \|Log2FC\|>log2(1.5) |
+|---|---|---|---|---|
+| dpr13 | −2.60 | 4.6×10⁻⁷⁸ | Yes | Yes |
+| beat-VI | −1.33 | 5.6×10⁻³³ | Yes | Yes |
+| DIP-ε | −0.09 | 1.3×10⁻⁴ | No | No |
+| side-II | +0.37 | 4.2×10⁻¹² | No | No |
 
 ---
 
