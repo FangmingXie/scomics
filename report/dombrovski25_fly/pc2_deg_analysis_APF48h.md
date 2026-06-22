@@ -60,6 +60,59 @@
 
 ---
 
+## Pv vs Sst — Outgroup Comparison (Mouse P56 VIS Cortex)
+
+**Dataset:** Gao 2025 mouse DevVIS scRNA-seq (`DevVIS_scRNA_processed.h5ad`)  
+**Cell population:** P56, VIS cortex — Pvalb Gaba (1,018 cells) vs Sst Gaba (1,102 cells)  
+**Scripts:** 10 · 11
+
+### Procedures
+
+- Filtered to P56 cells; removed 13 mitochondrial genes (`mt-` prefix), leaving 32,272 genes.
+- Library depth computed from raw count matrix (no `nCount_RNA` column in obs).
+- Tested all 28,705 expressed non-mt genes (constant genes excluded).
+- Test: Wilcoxon rank-sum on CP10k+log2(1+x) expression (same normalization as fly analysis).
+- FDR correction: Benjamini-Hochberg.
+
+### Significant DEGs at varying Log2FC thresholds
+
+| \|Log2FC\| threshold | Total | Up in Sst Gaba | Up in Pvalb Gaba |
+|---|---|---|---|
+| > 0.5 | 462 | 215 | 247 |
+| > 1.0 (2-fold) | 143 | 75 | 68 |
+
+### Top hits (ranked by FDR)
+
+| Gene | Log2FC | FDR | Direction |
+|---|---|---|---|
+| Sst | +4.07 | ~0 | Sst Gaba |
+| Grin3a | +3.42 | ~0 | Sst Gaba |
+| Synpr | +3.37 | ~0 | Sst Gaba |
+| Cacna2d3 | +2.91 | ~0 | Sst Gaba |
+| Kcnh7 | −2.47 | 7.5×10⁻³⁰¹ | Pvalb Gaba |
+| Srrm4 | −1.76 | 2.2×10⁻³⁰² | Pvalb Gaba |
+| Elfn1 | +1.91 | ~0 | Sst Gaba |
+| Slc4a4 | −1.66 | ~0 | Pvalb Gaba |
+| Myo1e | −1.20 | 4.4×10⁻³⁰⁶ | Pvalb Gaba |
+| Cox6a2 | −1.07 | ~0 | Pvalb Gaba |
+
+### Comparison: LPLC2 PC2 extremes vs Pv vs Sst
+
+The Pv vs Sst difference is substantially larger than the within-type LPLC2 PC2 variation, as expected for a between-subtype comparison:
+
+| Metric | Fly LPLC2 PC2 extremes | Mouse Pv vs Sst |
+|---|---|---|
+| Genes tested | 11,869 | 28,705 |
+| DEGs \|Log2FC\| > 0.5 | 229 | 462 (~2×) |
+| DEGs \|Log2FC\| > 1.0 | 49 | 143 (~3×) |
+| % genes FDR < 0.05 | 15.9% | 31.3% (~2×) |
+| Mean \|Log2FC\| (sig, >1) | 1.29 | 1.51 |
+| Max \|Log2FC\| | 2.60 | 4.11 |
+
+Pv vs Sst yields ~3× more significant DEGs at the 2-fold threshold and roughly double the genome-wide significant fraction. The fly PC2 comparison is notable given its much smaller gene set, tighter effect sizes, and that it captures continuous within-type heterogeneity rather than a discrete subtype boundary.
+
+---
+
 ## Conclusions
 
 - PC2 captures a biologically meaningful axis of variation within LPLC2 cells at APF_48h, distinct from library-size effects (which were regressed out).
