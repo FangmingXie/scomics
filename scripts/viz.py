@@ -1,5 +1,6 @@
 # Shared visualization functions for archetype analysis scripts.
 
+import os
 import itertools
 import numpy as np
 import matplotlib.cm as cm
@@ -14,6 +15,17 @@ from natsort import natsorted
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
+
+# Modebar config that makes the saved HTML's download button export a static SVG
+# vector (instead of the plotly default PNG). SVG is rendered client-side by
+# plotly.js in the browser — no kaleido / server-side image export needed.
+_SVG_CONFIG = {'toImageButtonOptions': {'format': 'svg'}}
+
+
+def _write_fig(fig, out_path):
+    """Write a plotly figure to HTML with an SVG-export download button."""
+    fig.write_html(out_path, config=_SVG_CONFIG)
+    print(f"  Saved {out_path}")
 
 
 def _metadata_to_colors(values):
@@ -121,6 +133,36 @@ def save_metrics_plot(noc_grid, ev_grid, av_grid, av_rep_grid, ndim, title, out_
     print(f"  Saved {out_path}")
 
 
+def save_metrics_plot_html(noc_grid, ev_grid, av_grid, av_rep_grid, ndim, title, out_path):
+    """Save EV / ARV / effective-EV metrics as an interactive HTML.
+
+    Plotly equivalent of save_metrics_plot. The saved HTML's modebar download
+    button exports a static SVG vector (see _SVG_CONFIG).
+    """
+    ev_grid = np.asarray(ev_grid)
+    av_grid = np.asarray(av_grid)
+    av_rep_grid = np.asarray(av_rep_grid)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=noc_grid, y=ev_grid, mode='lines+markers',
+                             line=dict(color='black'), name='explained variance (EV)'))
+    fig.add_trace(go.Scatter(x=noc_grid, y=av_grid, mode='lines+markers',
+                             line=dict(color='steelblue'), name='ARV (bootstrap)'))
+    fig.add_trace(go.Scatter(x=noc_grid, y=av_rep_grid, mode='lines+markers',
+                             line=dict(color='steelblue', dash='dash'), name='ARV_rep (per-group)'))
+    fig.add_trace(go.Scatter(x=noc_grid, y=ev_grid * (1 - av_grid), mode='lines+markers',
+                             line=dict(color='tomato'), name='effective EV (bootstrap)'))
+    fig.add_trace(go.Scatter(x=noc_grid, y=ev_grid * (1 - av_rep_grid), mode='lines+markers',
+                             line=dict(color='tomato', dash='dash'), name='effective EV (rep)'))
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title='Number of archetypes (NOC)', tickmode='array', tickvals=list(noc_grid)),
+        yaxis=dict(title='Score', range=[0, 1]),
+        width=700, height=500,
+    )
+    _write_fig(fig, out_path)
+
+
 def _add_2d_panel(fig, xp, noc_entries, initial_colors, row, col):
     """Add 2D cell scatter and per-NOC archetype overlays to fig. Returns cell trace index.
 
@@ -200,8 +242,7 @@ def scatter_html(xp_grid, cell_metadata, title, out_path,
         )],
     )
     fig.update_scenes(dragmode='orbit')
-    fig.write_html(out_path)
-    print(f"  Saved {out_path}")
+    _write_fig(fig, out_path)
 
 
 def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
@@ -412,8 +453,7 @@ def scatter_categorical_html(xp_grid, cell_metadata, title, out_path,
             xref = 'x' if pi == 0 else f'x{pi + 1}'
             fig.update_yaxes(scaleanchor=xref, scaleratio=1, row=1, col=pi + 1)
     fig.update_scenes(dragmode='orbit')
-    fig.write_html(out_path)
-    print(f"  Saved {out_path}")
+    _write_fig(fig, out_path)
 
 
 def scatter_2d_categorical_html(xp_grid, cell_metadata, title, out_path,
@@ -490,8 +530,7 @@ def scatter_2d_categorical_html(xp_grid, cell_metadata, title, out_path,
     )
     if return_html:
         return fig.to_html(full_html=False, include_plotlyjs='cdn')
-    fig.write_html(out_path)
-    print(f"  Saved {out_path}")
+    _write_fig(fig, out_path)
 
 
 def scatter_per_group_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid,
@@ -533,8 +572,7 @@ def scatter_per_group_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid
 
     fig.update_layout(title=title, width=400 * ncols, height=500)
     fig.update_scenes(dragmode='orbit')
-    fig.write_html(out_path)
-    print(f"  Saved {out_path}")
+    _write_fig(fig, out_path)
 
 
 def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None, panel_width=500,
@@ -590,8 +628,7 @@ def stacked_bar_html(panel_data, celltypes, title, out_path, ct_colors=None, pan
     for i in range(1, n + 1):
         yaxis_key = 'yaxis' if i == 1 else f'yaxis{i}'
         fig.update_layout(**{yaxis_key: dict(range=[0, 1], title='Fraction of cells')})
-    fig.write_html(out_path)
-    print(f"  Saved {out_path}")
+    _write_fig(fig, out_path)
 
 
 def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
@@ -760,8 +797,7 @@ def gene_expr_scatter_html(x, y, gene_vals, title, out_path,
     fig.update_scenes(dragmode='orbit')
     if return_html:
         return fig.to_html(full_html=False, include_plotlyjs='cdn')
-    fig.write_html(out_path)
-    print(f"  Saved {out_path}")
+    _write_fig(fig, out_path)
 
 
 def gene_expr_boxplot_html(df, genes, sample_col, condition_col, sample_order,
@@ -831,5 +867,4 @@ def gene_expr_boxplot_html(df, genes, sample_col, condition_col, sample_order,
             bgcolor='white', bordercolor='grey', font=dict(size=12),
         )],
     )
-    fig.write_html(out_path)
-    print(f"  Saved {out_path}")
+    _write_fig(fig, out_path)
