@@ -40,6 +40,7 @@ DR_AGES       = ['P28_dr', 'P38_dr']
 MIN_CELLS     = 50
 N_BINS        = 4
 FDR_THRESH    = 0.05
+LOG2FC_THRESH = np.log2(1.5)
 MIN_EXPR_FRAC = 0.1
 
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -195,8 +196,8 @@ for b in range(N_BINS):
     res_df['fdr'] = np.nan
     res_df.loc[valid, 'fdr'] = fdr
 
-    sig = res_df[res_df['fdr'] < FDR_THRESH].sort_values('fdr').reset_index(drop=True)
-    print(f'  Significant genes (FDR<{FDR_THRESH}): {len(sig)}')
+    sig = res_df[(res_df['fdr'] < FDR_THRESH) & (res_df['log2FC'].abs() > LOG2FC_THRESH)].sort_values('fdr').reset_index(drop=True)
+    print(f'  Significant genes (FDR<{FDR_THRESH}, |log2FC|>log2(1.5)): {len(sig)}')
 
     out_all = os.path.join(OUT_DIR, f'45.deg_vx3_bin{b+1}_NR_vs_DR_all.tsv')
     out_sig = os.path.join(OUT_DIR, f'45.deg_vx3_bin{b+1}_NR_vs_DR_sig.tsv')
