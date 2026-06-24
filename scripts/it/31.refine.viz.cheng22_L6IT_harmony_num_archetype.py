@@ -1,16 +1,16 @@
-"""Harmony archetype number selection — cheng22 mouse L4 IT (plots).
+"""Harmony archetype number selection — cheng22 mouse L6IT IT (plots).
 
-Reads the computed results from 28.refine.cheng22_L4_harmony_num_archetype.py and
+Reads the computed results from 31.refine.cheng22_L6IT_harmony_num_archetype.py and
 renders the interactive HTML figures: the metrics plot (bootstrap ARV and
 effective-EV as mean ± std error bars) and the per-sample archetype scatter overlay.
 No computation here — rerun the compute script if inputs are missing.
 
 Reads:
-  local_data/res/it/28.refine.cheng22_L4_harmony_num_archetype_metrics.tsv
-  local_data/res/it/28.refine.cheng22_L4_harmony_num_archetype_plotdata.pkl
+  local_data/res/it/31.refine.cheng22_L6IT_harmony_num_archetype_metrics.tsv
+  local_data/res/it/31.refine.cheng22_L6IT_harmony_num_archetype_plotdata.pkl
 Outputs:
-  local_data/fig/it/28.refine.cheng22_L4_harmony_num_archetype_metrics.html
-  local_data/fig/it/28.refine.cheng22_L4_harmony_num_archetype_interactive.html
+  local_data/fig/it/31.refine.cheng22_L6IT_harmony_num_archetype_metrics.html
+  local_data/fig/it/31.refine.cheng22_L6IT_harmony_num_archetype_interactive.html
 """
 
 import os
@@ -28,10 +28,10 @@ from viz import save_metrics_err_plot_html, scatter_per_group_html
 # --- file paths ---
 OUT_RES_DIR      = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 OUT_FIG_DIR      = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
-IN_METRICS_TSV   = os.path.join(OUT_RES_DIR, '28.refine.cheng22_L4_harmony_num_archetype_metrics.tsv')
-IN_PLOTDATA      = os.path.join(OUT_RES_DIR, '28.refine.cheng22_L4_harmony_num_archetype_plotdata.pkl')
-OUT_METRICS_HTML = os.path.join(OUT_FIG_DIR, '28.refine.cheng22_L4_harmony_num_archetype_metrics.html')
-OUT_INTERACTIVE  = os.path.join(OUT_FIG_DIR, '28.refine.cheng22_L4_harmony_num_archetype_interactive.html')
+IN_METRICS_TSV   = os.path.join(OUT_RES_DIR, '31.refine.cheng22_L6IT_harmony_num_archetype_metrics.tsv')
+IN_PLOTDATA      = os.path.join(OUT_RES_DIR, '31.refine.cheng22_L6IT_harmony_num_archetype_plotdata.pkl')
+OUT_METRICS_HTML = os.path.join(OUT_FIG_DIR, '31.refine.cheng22_L6IT_harmony_num_archetype_metrics.html')
+OUT_INTERACTIVE  = os.path.join(OUT_FIG_DIR, '31.refine.cheng22_L6IT_harmony_num_archetype_interactive.html')
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
@@ -57,7 +57,7 @@ xp_grid      = [plotdata['xp']] * len(noc_grid)
 # --- metrics plot with bootstrap error bars ---
 save_metrics_err_plot_html(noc_grid, ev_grid, arv_mean, arv_std, av_rep_grid,
                            effev_mean, effev_std, effev_rep_grid, NDIM,
-                           f'Archetype selection — cheng22 mouse L4 Harmony PCs (NDIM={NDIM})',
+                           f'Archetype selection — cheng22 mouse L6IT Harmony PCs (NDIM={NDIM})',
                            OUT_METRICS_HTML)
 
 # --- per-sample archetype overlay ---
@@ -66,7 +66,7 @@ sample_to_color = {s: cycle[i % len(cycle)] for i, s in enumerate(np.unique(samp
 
 scatter_per_group_html(noc_grid, ev_grid, av_rep_grid, xp_grid, aa_reps_grid,
                        samples, sample_to_color,
-                       f'Per-sample archetype overlay — cheng22 mouse L4 Harmony PCs (NDIM={NDIM})',
+                       f'Per-sample archetype overlay — cheng22 mouse L6IT Harmony PCs (NDIM={NDIM})',
                        OUT_INTERACTIVE)
 
 print('Done.')
