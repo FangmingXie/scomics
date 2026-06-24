@@ -28,6 +28,23 @@ def _write_fig(fig, out_path):
     print(f"  Saved {out_path}")
 
 
+def _rgba(color, alpha):
+    """Return an 'rgba(r,g,b,alpha)' string for any matplotlib-recognized color."""
+    r, g, b, _ = mcolors.to_rgba(color)
+    return f'rgba({int(r * 255)},{int(g * 255)},{int(b * 255)},{alpha})'
+
+
+def _add_band(fig, x, mean, std, color, alpha=0.3):
+    """Add a translucent mean±std band (fill_between equivalent) as two helper traces."""
+    mean = np.asarray(mean)
+    std = np.asarray(std)
+    fig.add_trace(go.Scatter(x=x, y=mean + std, mode='lines', line=dict(width=0),
+                             showlegend=False, hoverinfo='skip'))
+    fig.add_trace(go.Scatter(x=x, y=mean - std, mode='lines', line=dict(width=0),
+                             fill='tonexty', fillcolor=_rgba(color, alpha),
+                             showlegend=False, hoverinfo='skip'))
+
+
 def _metadata_to_colors(values):
     """Convert raw metadata values to per-cell hex color strings.
 
@@ -143,21 +160,73 @@ def save_metrics_plot_html(noc_grid, ev_grid, av_grid, av_rep_grid, ndim, title,
     av_grid = np.asarray(av_grid)
     av_rep_grid = np.asarray(av_rep_grid)
 
+    marker = dict(size=10)
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=noc_grid, y=ev_grid, mode='lines+markers',
-                             line=dict(color='black'), name='explained variance (EV)'))
+                             line=dict(color='black'), marker=marker, name='explained variance (EV)'))
     fig.add_trace(go.Scatter(x=noc_grid, y=av_grid, mode='lines+markers',
-                             line=dict(color='steelblue'), name='ARV (bootstrap)'))
+                             line=dict(color='steelblue'), marker=marker, name='ARV (bootstrap)'))
     fig.add_trace(go.Scatter(x=noc_grid, y=av_rep_grid, mode='lines+markers',
-                             line=dict(color='steelblue', dash='dash'), name='ARV_rep (per-group)'))
+                             line=dict(color='steelblue', dash='dash'), marker=marker, name='ARV_rep (per-group)'))
     fig.add_trace(go.Scatter(x=noc_grid, y=ev_grid * (1 - av_grid), mode='lines+markers',
-                             line=dict(color='tomato'), name='effective EV (bootstrap)'))
+                             line=dict(color='tomato'), marker=marker, name='effective EV (bootstrap)'))
     fig.add_trace(go.Scatter(x=noc_grid, y=ev_grid * (1 - av_rep_grid), mode='lines+markers',
-                             line=dict(color='tomato', dash='dash'), name='effective EV (rep)'))
+                             line=dict(color='tomato', dash='dash'), marker=marker, name='effective EV (rep)'))
+    axis_style = dict(showline=True, linecolor='black', ticks='outside', tickcolor='black',
+                      linewidth=1.5, color='black')
     fig.update_layout(
         title=title,
-        xaxis=dict(title='Number of archetypes (NOC)', tickmode='array', tickvals=list(noc_grid)),
-        yaxis=dict(title='Score', range=[0, 1]),
+        xaxis=dict(title='Number of archetypes (NOC)', tickmode='array', tickvals=list(noc_grid), **axis_style),
+        yaxis=dict(title='Score', range=[0, 1], **axis_style),
+        paper_bgcolor='white', plot_bgcolor='white',
+        width=700, height=500,
+    )
+    _write_fig(fig, out_path)
+
+
+def save_metrics_err_plot_html(noc_grid, ev_grid, arv_mean, arv_std, av_rep_grid,
+                               effev_mean, effev_std, effev_rep_grid, ndim, title, out_path):
+    """Save EV / ARV / effective-EV metrics with bootstrap std bands as interactive HTML.
+
+    Like save_metrics_plot_html, but the bootstrap ARV and effective-EV(bootstrap)
+    curves are mean ± std over repeated bootstrap runs, drawn as translucent
+    fill_between-style bands (alpha=0.3). EV and the per-group (rep) curves are
+    single-valued. The saved HTML's modebar download button exports a static SVG
+    vector (see _SVG_CONFIG).
+    """
+    ev_grid       = np.asarray(ev_grid)
+    arv_mean      = np.asarray(arv_mean)
+    arv_std       = np.asarray(arv_std)
+    av_rep_grid   = np.asarray(av_rep_grid)
+    effev_mean    = np.asarray(effev_mean)
+    effev_std     = np.asarray(effev_std)
+    effev_rep_grid = np.asarray(effev_rep_grid)
+
+    arv_color   = mcolors.to_hex('gray')   # ARV / ARV_rep (was steelblue)
+    effev_color = mcolors.to_hex('C1')     # effective EV (was tomato)
+    marker = dict(size=10)
+    fig = go.Figure()
+    # std bands (drawn first so the mean lines sit on top)
+    _add_band(fig, noc_grid, arv_mean, arv_std, arv_color)
+    _add_band(fig, noc_grid, effev_mean, effev_std, effev_color)
+    fig.add_trace(go.Scatter(x=noc_grid, y=ev_grid, mode='lines+markers',
+                             line=dict(color='black'), marker=marker, name='explained variance (EV)'))
+    fig.add_trace(go.Scatter(x=noc_grid, y=arv_mean, mode='lines+markers',
+                             line=dict(color=arv_color), marker=marker, name='ARV (bootstrap)'))
+    fig.add_trace(go.Scatter(x=noc_grid, y=av_rep_grid, mode='lines+markers',
+                             line=dict(color=arv_color, dash='dash'), marker=marker, name='ARV_rep (per-group)'))
+    fig.add_trace(go.Scatter(x=noc_grid, y=effev_mean, mode='lines+markers',
+                             line=dict(color=effev_color), marker=marker, name='effective EV (bootstrap)'))
+    fig.add_trace(go.Scatter(x=noc_grid, y=effev_rep_grid, mode='lines+markers',
+                             line=dict(color=effev_color, dash='dash'), marker=marker, name='effective EV (rep)'))
+    axis_style = dict(showline=True, linecolor='black', ticks='outside', tickcolor='black',
+                      linewidth=1.5, color='black', gridcolor='lightgray')
+    fig.update_layout(
+        title=title,
+        xaxis=dict(title='Number of archetypes (NOC)', tickmode='array', tickvals=list(noc_grid), **axis_style),
+        yaxis=dict(title='Score', range=[0, 1], **axis_style),
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='black', family='Arial'),
         width=700, height=500,
     )
     _write_fig(fig, out_path)
