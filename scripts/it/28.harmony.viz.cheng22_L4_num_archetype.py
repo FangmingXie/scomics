@@ -1,16 +1,16 @@
 """Harmony archetype number selection — cheng22 mouse L4 IT (plots).
 
-Reads the computed results from 28.refine.cheng22_L4_harmony_num_archetype.py and
+Reads the computed results from 28.harmony.cheng22_L4_num_archetype.py and
 renders the interactive HTML figures: the metrics plot (bootstrap ARV and
 effective-EV as mean ± std error bars) and the per-sample archetype scatter overlay.
 No computation here — rerun the compute script if inputs are missing.
 
 Reads:
-  local_data/res/it/28.refine.cheng22_L4_harmony_num_archetype_metrics.tsv
-  local_data/res/it/28.refine.cheng22_L4_harmony_num_archetype_plotdata.pkl
+  local_data/res/it/28.harmony.cheng22_L4_num_archetype_metrics.tsv
+  local_data/res/it/28.harmony.cheng22_L4_num_archetype_plotdata.pkl
 Outputs:
-  local_data/fig/it/28.refine.cheng22_L4_harmony_num_archetype_metrics.html
-  local_data/fig/it/28.refine.cheng22_L4_harmony_num_archetype_interactive.html
+  local_data/fig/it/28.harmony.cheng22_L4_num_archetype_metrics.html
+  local_data/fig/it/28.harmony.cheng22_L4_num_archetype_interactive.html
 """
 
 import os
@@ -28,10 +28,10 @@ from viz import save_metrics_err_plot_html, scatter_per_group_html
 # --- file paths ---
 OUT_RES_DIR      = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 OUT_FIG_DIR      = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
-IN_METRICS_TSV   = os.path.join(OUT_RES_DIR, '28.refine.cheng22_L4_harmony_num_archetype_metrics.tsv')
-IN_PLOTDATA      = os.path.join(OUT_RES_DIR, '28.refine.cheng22_L4_harmony_num_archetype_plotdata.pkl')
-OUT_METRICS_HTML = os.path.join(OUT_FIG_DIR, '28.refine.cheng22_L4_harmony_num_archetype_metrics.html')
-OUT_INTERACTIVE  = os.path.join(OUT_FIG_DIR, '28.refine.cheng22_L4_harmony_num_archetype_interactive.html')
+IN_METRICS_TSV   = os.path.join(OUT_RES_DIR, '28.harmony.cheng22_L4_num_archetype_metrics.tsv')
+IN_PLOTDATA      = os.path.join(OUT_RES_DIR, '28.harmony.cheng22_L4_num_archetype_plotdata.pkl')
+OUT_METRICS_HTML = os.path.join(OUT_FIG_DIR, '28.harmony.cheng22_L4_num_archetype_metrics.html')
+OUT_INTERACTIVE  = os.path.join(OUT_FIG_DIR, '28.harmony.cheng22_L4_num_archetype_interactive.html')
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
 

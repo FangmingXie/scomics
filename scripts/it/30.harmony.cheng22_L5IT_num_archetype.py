@@ -1,4 +1,4 @@
-"""Harmony archetype number selection — cheng22 mouse L2/3 IT (embed + compute, refined).
+"""Harmony archetype number selection — cheng22 mouse L5IT IT (embed + compute, refined).
 
 Self-contained Harmony archetype-inference procedure (merged embed + sweep):
   1) z-score normalization (CP10k → log2(1+x) → z-score per gene) on top-2000 HVGs
@@ -11,16 +11,16 @@ Self-contained Harmony archetype-inference procedure (merged embed + sweep):
 
 Mirrors the normalization + regression + Harmony steps of
 scripts/astro/41.embed_cheng22_nr_harmony_arch12.py. Plotting lives in
-29.refine.viz.cheng22_L23_harmony_num_archetype.py.
+30.harmony.viz.cheng22_L5IT_num_archetype.py.
 
 Reads:
   links/it/superdupermegaRNA_cheng22_IT_P28NR.h5ad
 Outputs:
-  local_data/res/it/29.refine.cheng22_L23_harmony_coords.tsv      (H1..H10 + Type + Sample)
-  local_data/res/it/29.refine.cheng22_L23_harmony_pca_coords.tsv  (raw PCA, pre-Harmony)
-  local_data/res/it/29.refine.cheng22_L23_harmony_loadings.tsv    (PCA gene loadings)
-  local_data/res/it/29.refine.cheng22_L23_harmony_num_archetype_metrics.tsv   (metric grids w/ ARV mean/std)
-  local_data/res/it/29.refine.cheng22_L23_harmony_num_archetype_plotdata.pkl  (proj + per-group archetypes)
+  local_data/res/it/30.harmony.cheng22_L5IT_coords.tsv      (H1..H10 + Type + Sample)
+  local_data/res/it/30.harmony.cheng22_L5IT_pca_coords.tsv  (raw PCA, pre-Harmony)
+  local_data/res/it/30.harmony.cheng22_L5IT_loadings.tsv    (PCA gene loadings)
+  local_data/res/it/30.harmony.cheng22_L5IT_num_archetype_metrics.tsv   (metric grids w/ ARV mean/std)
+  local_data/res/it/30.harmony.cheng22_L5IT_num_archetype_plotdata.pkl  (proj + per-group archetypes)
 """
 
 import os
@@ -44,14 +44,14 @@ from scomics.utils import norm, get_relative_variation
 # --- file paths ---
 OUT_RES_DIR        = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 INPUT_MOUSE        = os.path.join(PROJECT_ROOT, 'links', 'it', 'superdupermegaRNA_cheng22_IT_P28NR.h5ad')
-OUT_HARMONY_COORDS = os.path.join(OUT_RES_DIR, '29.refine.cheng22_L23_harmony_coords.tsv')
-OUT_PCA_COORDS     = os.path.join(OUT_RES_DIR, '29.refine.cheng22_L23_harmony_pca_coords.tsv')
-OUT_PCA_LOADINGS   = os.path.join(OUT_RES_DIR, '29.refine.cheng22_L23_harmony_loadings.tsv')
-OUT_METRICS_TSV    = os.path.join(OUT_RES_DIR, '29.refine.cheng22_L23_harmony_num_archetype_metrics.tsv')
-OUT_PLOTDATA       = os.path.join(OUT_RES_DIR, '29.refine.cheng22_L23_harmony_num_archetype_plotdata.pkl')
+OUT_HARMONY_COORDS = os.path.join(OUT_RES_DIR, '30.harmony.cheng22_L5IT_coords.tsv')
+OUT_PCA_COORDS     = os.path.join(OUT_RES_DIR, '30.harmony.cheng22_L5IT_pca_coords.tsv')
+OUT_PCA_LOADINGS   = os.path.join(OUT_RES_DIR, '30.harmony.cheng22_L5IT_loadings.tsv')
+OUT_METRICS_TSV    = os.path.join(OUT_RES_DIR, '30.harmony.cheng22_L5IT_num_archetype_metrics.tsv')
+OUT_PLOTDATA       = os.path.join(OUT_RES_DIR, '30.harmony.cheng22_L5IT_num_archetype_plotdata.pkl')
 
 # --- parameters ---
-MOUSE_SUBCLASS = 'L2/3'
+MOUSE_SUBCLASS = 'L5IT'
 CLUSTER_COL    = 'Type'
 SAMPLE_COL     = 'Sample'
 N_HVG          = 2000
