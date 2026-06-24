@@ -45,6 +45,7 @@ scomics/
 ## Environment
 
 - Use this conda env to run this project: `archetype`, that means to run any python script with `conda run -n archetype`
+- For heavy-lifting scripts, prefer running unbuffered at both levels so output (progress, logs) streams in real time: use `conda run --no-capture-output -n archetype python -u <script>.py`
 
 ## .gitignore Notes
 
