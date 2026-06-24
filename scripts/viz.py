@@ -128,6 +128,46 @@ def _add_archetype_3d_scene(fig, aa, noc, lg, scene, color='black', marker_size=
 # Public functions
 # ---------------------------------------------------------------------------
 
+def save_score_scatter_pdf(xp, scores, names, aa, title, out_path,
+                           cmap='RdBu_r', pctile=(5, 95), s=3, dpi=300):
+    """Save a per-score PC1-vs-PC2 scatter as a vectorized PDF (rasterized points).
+
+    One panel per score (column of `scores`). Points are drawn with rasterized=True so
+    the dense cloud is a single embedded bitmap, while axes/text/archetype overlay stay
+    vector. Per-panel color scale is clipped at the `pctile` (low, high) of each score.
+
+    xp:     (n_cells, >=2) coordinate array; columns 0,1 used as PC1, PC2.
+    scores: (n_cells, n_scores) array; each column colors one panel.
+    names:  list of score names (one per scores column), used in panel titles.
+    aa:     (n_archetypes, >=2) archetype coords (PC space); diamonds + polygon overlay.
+    """
+    plt.rcParams['pdf.fonttype'] = 42   # editable vector text
+    scores = np.asarray(scores)
+    n = len(names)
+    fig, axes = plt.subplots(1, n, figsize=(4.2 * n, 4), squeeze=False)
+    for k, name in enumerate(names):
+        ax = axes[0, k]
+        vals = scores[:, k]
+        vmin, vmax = np.percentile(vals, pctile)
+        sc = ax.scatter(xp[:, 0], xp[:, 1], c=vals, cmap=cmap, vmin=vmin, vmax=vmax,
+                        s=s, linewidths=0, rasterized=True)
+        # archetype overlay (vector): diamonds + closing polygon
+        ax.plot(list(aa[:, 0]) + [aa[0, 0]], list(aa[:, 1]) + [aa[0, 1]],
+                '-', color='black', linewidth=1.0)
+        ax.scatter(aa[:, 0], aa[:, 1], marker='D', color='black', s=30, zorder=3)
+        ax.set_aspect('equal', adjustable='box')   # equal PC1/PC2 scaling (true geometry)
+        ax.set_xlabel('PC1')
+        ax.set_ylabel('PC2')
+        ax.set_title(f'Score {name}')
+        fig.colorbar(sc, ax=ax, label='archetype score [0–1]', shrink=0.8)
+        sns.despine(ax=ax)
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(out_path, bbox_inches='tight', dpi=dpi)
+    plt.close(fig)
+    print(f"  Saved {out_path}")
+
+
 def save_metrics_plot(noc_grid, ev_grid, av_grid, av_rep_grid, ndim, title, out_path):
     """Save EV / ARV / effective-EV metrics PNG."""
     fig, ax = plt.subplots(figsize=(6, 4))
