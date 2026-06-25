@@ -74,3 +74,39 @@ Columns: `regulon, TF, regulation_direction, source, Gene`
 One row per regulon–target-gene pair (long format), grouped by the `regulon`
 column. `source` is `direct` or `extended`; `regulation_direction` is the sign
 pattern (`+/+` or `-/+` — only positive-R2G regulons are retained).
+
+# Archetype × regulon enrichment — IT script 41
+
+`scripts/it/41.regulon_archetype_enrichment.py` tests, per layer, whether each
+archetype's marker set (scripts 33–36) is over-represented among each regulon's
+target genes (script 40) via a one-sided Fisher exact test, and renders a per-layer
+heatmap.
+
+| Layer | Universe (N) | Regulons tested | Significant (FDR<0.05 in ≥1 archetype) | Long-format TSV |
+|---|---|---|---|---|
+| L4   | 16,551 | 107 | 51 | `local_data/res/it/41.L4_regulon_archetype_enrichment.tsv` |
+| L2/3 | 16,544 | 139 | 82 | `local_data/res/it/41.L2_3_regulon_archetype_enrichment.tsv` |
+| L5IT | 16,338 | 54  | 24 | `local_data/res/it/41.L5IT_regulon_archetype_enrichment.tsv` |
+| L6IT | 16,443 | 49  | 29 | `local_data/res/it/41.L6IT_regulon_archetype_enrichment.tsv` |
+
+## How it's produced
+
+1. **Background universe** = the per-layer *tested expression gene set* (shared
+   expressed / nonzero-variance genes across cheng22 + yoo25), reconstructed from
+   the two h5ad inputs exactly as the marker scripts do
+   (`scripts/it/33.follow.two_L4_archetype_scores.py:127-176`). This is the set the
+   archetype marker Wilcoxon ran over (~16.5k genes), not the regulon gene space.
+2. Marker sets (per archetype) and regulon target sets are intersected with the
+   universe; regulons with <5 in-universe targets are dropped.
+3. Per (archetype, regulon): 2×2 `[[x, M-x], [T-x, N-M-T+x]]` with `x`=overlap,
+   `M`=markers, `T`=targets, `N`=universe → `scipy.stats.fisher_exact(...,
+   alternative='greater')`. `log2 OR` uses a Haldane–Anscombe (+0.5) correction.
+4. BH-FDR across all (archetype × regulon) pairs within each layer.
+
+## Outputs (per layer)
+
+- `41.<layer>_regulon_archetype_enrichment.tsv` — long format: `layer, archetype,
+  regulon, TF, regulation_direction, overlap, n_markers, n_targets, universe,
+  log2_or, pval, fdr, neglog10_fdr`.
+- `41.<layer>_enrichment_neglog10fdr.tsv`, `41.<layer>_enrichment_log2or.tsv` —
+  regulon × archetype matrices (archetypes labeled `A`, `B`, …).
