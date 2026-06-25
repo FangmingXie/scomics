@@ -111,6 +111,16 @@ x = adata.X.toarray() if sp.issparse(adata.X) else np.array(adata.X, dtype=np.fl
 depths = x.sum(axis=1)
 gene_names = np.array(adata.var_names)
 
+# adata.X is log1p(CP10k) (used only for the VX embedding/binning). Pseudobulk must
+# aggregate RAW counts (counts are additive; log-normalized values are not), which
+# live in adata.raw. CPM + log2 normalization is then applied at the pseudobulk level.
+assert adata.raw is not None, 'adata.raw (raw counts) is required for pseudobulk'
+raw_counts = adata.raw[:, adata.var_names].X
+raw_counts = raw_counts.toarray() if sp.issparse(raw_counts) else np.asarray(raw_counts)
+raw_counts = np.rint(raw_counts).astype(np.int64)   # already integer; rint guards float dtype
+log.info(f'  raw counts from adata.raw: shape {raw_counts.shape}, max {raw_counts.max()}, '
+         f'per-cell median depth {int(np.median(raw_counts.sum(axis=1)))}')
+
 hvg_col_idx = np.array([np.where(adata.var_names == g)[0][0] for g in hvg_names])
 
 log.info('Normalizing all cells...')
@@ -152,7 +162,7 @@ for sample in np.unique(sample_combined):
     bin_labels[mask] = pd.qcut(vx3_combined[mask], q=N_BINS, labels=False, duplicates='drop')
 
 # raw counts for the combined NR+DR cells (all genes)
-x_comb = x[combined_idx]
+x_comb = raw_counts[combined_idx]   # raw integer counts for pseudobulk aggregation
 
 # map each sample to its condition (a sample is entirely NR or entirely DR)
 sample_to_cond = {}
