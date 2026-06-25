@@ -106,7 +106,11 @@ heatmap.
 ## Outputs (per layer)
 
 - `41.<layer>_regulon_archetype_enrichment.tsv` — long format: `layer, archetype,
-  regulon, TF, regulation_direction, overlap, n_markers, n_targets, universe,
-  log2_or, pval, fdr, neglog10_fdr`.
+  arch_letter, regulon, TF, regulation_direction, overlap, n_markers, n_targets,
+  universe, log2_or, pval, fdr, neglog10_fdr`.
 - `41.<layer>_enrichment_neglog10fdr.tsv`, `41.<layer>_enrichment_log2or.tsv` —
-  regulon × archetype matrices (archetypes labeled `A`, `B`, …).
+  regulon × archetype matrices, columns = `arch_letter`.
+
+`arch_letter` is the archetype display label: by default `archetype_1`→`A`,
+`archetype_2`→`B`, … For **L2/3** the labels are remapped `archetype_1`→`C'`,
+`archetype_2`→`B'`, `archetype_3`→`A'` (so columns/results order as `A'`, `B'`, `C'`).

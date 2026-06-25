@@ -16,15 +16,16 @@ from natsort import natsorted
 # Private helpers
 # ---------------------------------------------------------------------------
 
-# Modebar config that makes the saved HTML's download button export a static SVG
-# vector (instead of the plotly default PNG). SVG is rendered client-side by
-# plotly.js in the browser — no kaleido / server-side image export needed.
-_SVG_CONFIG = {'toImageButtonOptions': {'format': 'svg'}}
+def _write_fig(fig, out_path, screenshot_format='svg'):
+    """Write a plotly figure to HTML.
 
-
-def _write_fig(fig, out_path):
-    """Write a plotly figure to HTML with an SVG-export download button."""
-    fig.write_html(out_path, config=_SVG_CONFIG)
+    The saved HTML's modebar download ("screenshot") button exports a static image
+    in `screenshot_format` — SVG vector by default instead of the plotly default
+    PNG. The image is rendered client-side by plotly.js in the browser, so no
+    kaleido / server-side image export is needed.
+    """
+    config = {'toImageButtonOptions': {'format': screenshot_format}}
+    fig.write_html(out_path, config=config)
     print(f"  Saved {out_path}")
 
 
@@ -194,7 +195,7 @@ def save_metrics_plot_html(noc_grid, ev_grid, av_grid, av_rep_grid, ndim, title,
     """Save EV / ARV / effective-EV metrics as an interactive HTML.
 
     Plotly equivalent of save_metrics_plot. The saved HTML's modebar download
-    button exports a static SVG vector (see _SVG_CONFIG).
+    button exports a static SVG vector (see _write_fig).
     """
     ev_grid = np.asarray(ev_grid)
     av_grid = np.asarray(av_grid)
@@ -232,7 +233,7 @@ def save_metrics_err_plot_html(noc_grid, ev_grid, arv_mean, arv_std, av_rep_grid
     curves are mean ± std over repeated bootstrap runs, drawn as translucent
     fill_between-style bands (alpha=0.3). EV and the per-group (rep) curves are
     single-valued. The saved HTML's modebar download button exports a static SVG
-    vector (see _SVG_CONFIG).
+    vector (see _write_fig).
     """
     ev_grid       = np.asarray(ev_grid)
     arv_mean      = np.asarray(arv_mean)

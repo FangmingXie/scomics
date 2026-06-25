@@ -44,6 +44,10 @@ from statsmodels.stats.multitest import multipletests
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from viz import _write_fig
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
@@ -66,7 +70,9 @@ LAYERS = [
     dict(layer='L2_3', subclass_val='L2/3', noc=3,
          markers='34.follow.two_L23_archetype_markers.tsv',
          coords='34.harmony.two_L23_coords.tsv',
-         regulons='40.yoo25_L2_3_regulon_targets.tsv'),
+         regulons='40.yoo25_L2_3_regulon_targets.tsv',
+         # rename L2/3 archetype labels: old A,B,C (archetype_1,2,3) -> C',B',A'
+         arch_relabel={'archetype_1': "C'", 'archetype_2': "B'", 'archetype_3': "A'"}),
     dict(layer='L5IT', subclass_val='L5IT', noc=2,
          markers='35.follow.two_L5IT_archetype_markers.tsv',
          coords='35.harmony.two_L5IT_coords.tsv',
@@ -81,7 +87,7 @@ ARCHETYPE_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']  # archetype_1 -> A, etc.
 MIN_REGULON_GENES = 5    # drop regulons with fewer than this many targets in-universe
 LOG2OR_SHOW = 2.0        # a regulon row is shown if log2 OR > this in >= 1 archetype
 STAR_FDR = 1e-5          # heatmap cells marked '*' where FDR < this
-COLOR_PCTILE = (5, 95)   # log2 OR color limits from these percentiles (symmetric, 0-centered)
+COLOR_ABS = 5.0          # fixed log2 OR colorbar range [-COLOR_ABS, COLOR_ABS] for all heatmaps
 
 os.makedirs(RES_DIR, exist_ok=True)
 os.makedirs(FIG_DIR, exist_ok=True)
@@ -181,13 +187,15 @@ def enrich_layer(cfg, adatas):
     long['fdr'] = multipletests(long['pval'].values, method='fdr_bh')[1]
     long['neglog10_fdr'] = -np.log10(long['fdr'].clip(lower=np.nextafter(0, 1)))
 
+    # archetype display labels: per-layer override (e.g. L2/3 A,B,C -> C',B',A')
+    # else default archetype_1->A, archetype_2->B, ...
+    col_label = cfg.get('arch_relabel') or {a: ARCHETYPE_LETTERS[k] for k, a in enumerate(arch_labels)}
+    long['arch_letter'] = long['archetype'].map(col_label)
+
     out_long = os.path.join(RES_DIR, f'41.{layer}_regulon_archetype_enrichment.tsv')
     long.to_csv(out_long, sep='\t', index=False)
     print(f'    wrote -> {out_long} ({len(long)} pairs)')
 
-    # archetype columns labeled by letter (A, B, ...)
-    col_label = {a: ARCHETYPE_LETTERS[k] for k, a in enumerate(arch_labels)}
-    long['arch_letter'] = long['archetype'].map(col_label)
     fdr_mat = long.pivot(index='regulon', columns='arch_letter', values='neglog10_fdr')
     or_mat = long.pivot(index='regulon', columns='arch_letter', values='log2_or')
     fdr_mat.to_csv(os.path.join(RES_DIR, f'41.{layer}_enrichment_neglog10fdr.tsv'), sep='\t')
@@ -232,24 +240,25 @@ def enrich_layer(cfg, adatas):
 
     max_rows = max(len(p['order']) for p in panel_show if p is not None)
 
-    # symmetric, 0-centered color limits from the 5-95th percentile of shown log2 OR
-    shown_vals = np.concatenate([p['log2or'].values.ravel() for p in panel_show if p is not None])
-    p_lo, p_hi = np.nanpercentile(shown_vals, COLOR_PCTILE)
-    vmax = float(max(abs(p_lo), abs(p_hi)))
+    # one independent color axis per panel; place its colorbar beside its subplot
+    cax_names = ['coloraxis', 'coloraxis2']
+    cbar_x = [0.46, 1.0]  # colorbar x positions (subplot1 gap, subplot2 right edge)
 
     fig = make_subplots(
-        rows=1, cols=2, horizontal_spacing=0.22,
+        rows=1, cols=2, horizontal_spacing=0.24,
         subplot_titles=[f'{lbl} ({sign})  n={len(p["order"]) if p else 0}'
                         for (sign, lbl), p in zip(panels, panel_show)],
     )
+    layout_caxes = {}
     for col, p in enumerate(panel_show, start=1):
         if p is None:
             continue
+        cax = cax_names[col - 1]
         stars = np.where(p['fdr'].values < STAR_FDR, '*', '')
         customdata = np.dstack([p['overlap'].values, p['ntarg'].values, p['fdr'].values])
         fig.add_trace(go.Heatmap(
             z=p['log2or'].values, x=list(p['log2or'].columns), y=list(p['log2or'].index),
-            coloraxis='coloraxis', text=stars, texttemplate='%{text}',
+            coloraxis=cax, text=stars, texttemplate='%{text}',
             textfont=dict(size=14, color='black'),
             customdata=customdata,
             hovertemplate=('regulon=%{y}<br>archetype=%{x}<br>log2 OR=%{z:.2f}'
@@ -258,17 +267,20 @@ def enrich_layer(cfg, adatas):
         ), row=1, col=col)
         fig.update_yaxes(autorange='reversed', row=1, col=col)
         fig.update_xaxes(title_text='archetype', row=1, col=col)
+        layout_caxes[cax] = dict(
+            colorscale='RdBu_r', cmid=0, cmin=-COLOR_ABS, cmax=COLOR_ABS,
+            colorbar=dict(title=f'log2 OR<br>({p["sign"]})', x=cbar_x[col - 1],
+                          xanchor='left', len=0.9, thickness=14),
+        )
 
     fig.update_layout(
         title=f'{layer} IT — archetype marker enrichment in regulons '
               f'(log2 OR; * FDR<{STAR_FDR:g}; N={N} genes)',
-        coloraxis=dict(colorscale='RdBu_r', cmid=0, cmin=-vmax, cmax=vmax,
-                       colorbar=dict(title='log2 OR')),
-        height=max(400, 18 * max_rows + 180), width=900,
+        height=max(400, 18 * max_rows + 180), width=1000,
+        **layout_caxes,
     )
     out_html = os.path.join(FIG_DIR, f'41.{layer}_regulon_archetype_enrichment.html')
-    fig.write_html(out_html)
-    print(f'    wrote -> {out_html}')
+    _write_fig(fig, out_html)  # HTML whose screenshot button exports SVG by default
     return long
 
 
