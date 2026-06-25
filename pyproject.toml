@@ -6,7 +6,9 @@ authors = [
     {name = "Fangming Xie", email = "fmxie1993@gmail.com"}
 ]
 requires-python = ">=3.8"
-dependencies = []
+dependencies = [
+    "pydeseq2>=0.5.2",
+]
 
 [build-system]
 requires = ["setuptools>=61.0"]
