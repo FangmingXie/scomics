@@ -105,6 +105,15 @@ x = adata.X.toarray() if sp.issparse(adata.X) else np.array(adata.X, dtype=np.fl
 depths = x.sum(axis=1)
 gene_names = np.array(adata.var_names)
 
+# adata.X is NORMALIZED (used for the VX embedding/binning); DESeq2 needs RAW counts,
+# which live in adata.raw. Pull raw counts aligned to the same cells and gene order.
+assert adata.raw is not None, 'adata.raw (raw counts) is required for DESeq2'
+raw_counts = adata.raw[:, adata.var_names].X
+raw_counts = raw_counts.toarray() if sp.issparse(raw_counts) else np.asarray(raw_counts)
+raw_counts = np.rint(raw_counts).astype(np.int64)   # already integer; rint guards float dtype
+log.info(f'  raw counts from adata.raw: shape {raw_counts.shape}, max {raw_counts.max()}, '
+         f'per-cell median depth {int(np.median(raw_counts.sum(axis=1)))}')
+
 hvg_col_idx = np.array([np.where(adata.var_names == g)[0][0] for g in hvg_names])
 
 log.info('Normalizing all cells...')
@@ -144,8 +153,8 @@ for sample in np.unique(sample_combined):
     mask = sample_combined == sample
     bin_labels[mask] = pd.qcut(vx3_combined[mask], q=N_BINS, labels=False, duplicates='drop')
 
-# raw counts for combined NR+DR cells (all genes); DESeq2 needs integer counts
-x_comb = np.rint(x[combined_idx]).astype(np.int64)
+# raw counts for combined NR+DR cells (all genes) — true counts from adata.raw
+x_comb = raw_counts[combined_idx]
 
 sample_to_cond = {s: ('DR' if c == 1 else 'NR') for s, c in zip(sample_combined, condition_code)}
 
