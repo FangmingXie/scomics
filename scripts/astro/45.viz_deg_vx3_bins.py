@@ -145,7 +145,7 @@ print('Building volcano plots...')
 fig_v = make_subplots(
     rows=1, cols=N_BINS,
     subplot_titles=[f'Bin {b + 1}' for b in range(N_BINS)],
-    horizontal_spacing=0.04,
+    horizontal_spacing=0.06,
 )
 
 for b in range(N_BINS):
@@ -196,9 +196,13 @@ for b in range(N_BINS):
     if col == 1:
         fig_v.update_yaxes(title_text='-log10(FDR)', row=1, col=col)
 
+# shrink subplot-title font so the per-bin annotations don't overlap
+for ann in fig_v.layout.annotations[:N_BINS]:
+    ann.font.size = 12
+
 fig_v.update_layout(
     title=f'NR vs DR DEGs across VX3 bins (FDR<{FDR_THRESH}, |log2FC|>log2(1.5))',
-    width=1600, height=450, legend=dict(itemsizing='constant'),
+    width=2000, height=470, legend=dict(itemsizing='constant'),
 )
 fig_v.write_html(OUT_VOLCANO)
 print(f'  Saved {OUT_VOLCANO}')
