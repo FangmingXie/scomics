@@ -31,6 +31,7 @@ import pandas as pd
 import scipy.stats
 from statsmodels.stats.multitest import multipletests
 import plotly.graph_objects as go
+import plotly.colors as pc
 from plotly.subplots import make_subplots
 
 import sys
@@ -52,7 +53,7 @@ ARCH_RELABEL = {'archetype_1': "D'", 'archetype_2': "C'", 'archetype_3': "B'", '
 MIN_REGULON_GENES = 5    # drop regulons with fewer than this many targets in-universe
 LOG2OR_SHOW = 2.0        # a regulon row is shown if log2 OR > this in >= 1 archetype
 STAR_FDR = 1e-5          # heatmap cells marked '*' where FDR < this
-COLOR_ABS = 5.0          # fixed log2 OR colorbar range [-COLOR_ABS, COLOR_ABS]
+COLOR_PCTILE = (5, 95)   # log2 OR colorbar range = these percentiles of shown cells (white pinned at 0)
 
 os.makedirs(RES_DIR, exist_ok=True)
 os.makedirs(FIG_DIR, exist_ok=True)
@@ -62,6 +63,26 @@ def log2_odds_ratio(x, M, T, N):
     """Haldane-Anscombe corrected log2 odds ratio for the 2x2 [[x,M-x],[T-x,N-M-T+x]]."""
     a, b, c, d = x + 0.5, (M - x) + 0.5, (T - x) + 0.5, (N - M - T + x) + 0.5
     return float(np.log2((a * d) / (b * c)))
+
+
+def zero_anchored_colorscale(vmin, vmax, base='RdBu_r', n=33):
+    """Diverging colorscale spanning [vmin, vmax] with the neutral midpoint pinned to
+    data value 0 (so an asymmetric percentile range keeps white at 0, not at the center).
+    Value v maps to base-scale position: 0.5 at v=0, ->0 toward vmin(<0), ->1 toward vmax(>0).
+    """
+    neg = (0 - vmin) if vmin < 0 else None
+    pos = (vmax - 0) if vmax > 0 else None
+    cs = []
+    for u in np.linspace(0, 1, n):
+        v = vmin + u * (vmax - vmin)
+        if v <= 0 and neg:
+            t = 0.5 * (v - vmin) / neg
+        elif v >= 0 and pos:
+            t = 0.5 + 0.5 * v / pos
+        else:
+            t = 0.5
+        cs.append([float(u), pc.sample_colorscale(base, [min(max(t, 0.0), 1.0)])[0]])
+    return cs
 
 
 def enrich():
@@ -154,6 +175,15 @@ def enrich():
 
     max_rows = max(len(p['order']) for p in panel_show if p is not None)
 
+    # colorbar range = 5th/95th percentile of all shown log2 OR cells (both panels),
+    # with a zero-anchored diverging colorscale so the midpoint stays at 0
+    shown_vals = np.concatenate([p['log2or'].values.ravel() for p in panel_show if p is not None])
+    shown_vals = shown_vals[np.isfinite(shown_vals)]
+    cmin, cmax = np.nanpercentile(shown_vals, COLOR_PCTILE)
+    colorscale0 = zero_anchored_colorscale(cmin, cmax)
+    print(f'    colorbar range (p{COLOR_PCTILE[0]}-p{COLOR_PCTILE[1]}): '
+          f'[{cmin:.2f}, {cmax:.2f}] (0 = white)')
+
     # one independent color axis per panel; place its colorbar beside its subplot
     cax_names = ['coloraxis', 'coloraxis2']
     cbar_x = [0.46, 1.0]  # colorbar x positions (subplot1 gap, subplot2 right edge)
@@ -182,7 +212,7 @@ def enrich():
         fig.update_yaxes(autorange='reversed', row=1, col=col)
         fig.update_xaxes(title_text='archetype', row=1, col=col)
         layout_caxes[cax] = dict(
-            colorscale='RdBu_r', cmid=0, cmin=-COLOR_ABS, cmax=COLOR_ABS,
+            colorscale=colorscale0, cmin=cmin, cmax=cmax,
             colorbar=dict(title=f'log2 OR<br>({p["sign"]})', x=cbar_x[col - 1],
                           xanchor='left', len=0.9, thickness=14),
         )
