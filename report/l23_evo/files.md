@@ -85,3 +85,59 @@ log2-OR heatmaps.
 `arch_letter` is the archetype display label, reversed to mirror the mouse L2/3
 convention: `archetype_1`→`D'`, `archetype_2`→`C'`, `archetype_3`→`B'`,
 `archetype_4`→`A'`. Columns then sort to `A' B' C' D'` in the matrices and heatmaps.
+
+# Archetype markers over the full gene universe — l23_evo script 29
+
+`scripts/l23_evo/29.human_archetype_markers_allgenes.py` re-derives the human L2/3
+archetype markers over the **proper** gene universe instead of the 2000 HVGs used by
+script 25. The archetype definition is unchanged — it reproduces script 25's PCHA fit
+and top-300-cell-per-archetype assignment exactly (validated: each refit archetype
+correlates > 0.99 with `25.human_pcha_aa.tsv`) — only the gene set the Wilcoxon runs
+over is expanded.
+
+| Output | What | Genes |
+|---|---|---|
+| `local_data/res/l23_evo/29.human_gene_universe.tsv` | expressed & non-uniform genes | 20,415 of 29,352 |
+| `local_data/res/l23_evo/29.human_archetype_markers_allgenes.tsv` | NOC=4 markers (A–D) | 920 total (194/457/163/106) |
+
+## How it's produced
+
+1. **Gene universe** = all *expressed & non-uniform* genes: from the log-normalized
+   sparse `adata.X` over all L2/3 cells, keep genes with nonzero total and nonzero
+   variance — `(sum>0) & (var>0)`, the human analog of the mouse rule. 20,415 genes
+   (`feature_name` symbols, unique). Written as a single `gene` column.
+2. **Markers** = the same conservative one-vs-each Wilcoxon as script 25 (worst-case
+   `log2FC=min`, `pval=max`, `frac_out=mean` across the NOC−1 pairwise tests), but
+   BH-FDR is now computed over the full universe; filters `frac_in≥0.25`, `fdr<0.001`,
+   `log2FC>log2(1.5)`. Same schema as `25.human_archetype_markers.tsv`:
+   `gene, archetype, log2FC, pval, fdr, frac_in, frac_out`.
+
+# Archetype × regulon enrichment over the full universe — l23_evo script 30
+
+`scripts/l23_evo/30.human_l23_regulon_archetype_enrichment_allgenes.py` is script 28
+re-run against the script-29 markers and the 20,415-gene universe (identical
+statistics and heatmap code). **This supersedes script 28 for the universe-sensitive
+results**: with the proper background, all 582 regulons become testable and the
+Fisher/FDR numbers are no longer biased by the small HVG background.
+
+| Population | Universe (N) | Regulons tested | Significant (FDR<0.05 in ≥1 archetype) | Long-format TSV |
+|---|---|---|---|---|
+| Human L2/3 (full universe) | 20,415 | 582 | 271 | `local_data/res/l23_evo/30.human_l23_regulon_archetype_enrichment_allgenes.tsv` |
+
+(For comparison, the 2000-HVG script 28 tested only 359 regulons with N=2,000.)
+
+## Outputs
+
+- `30.human_l23_regulon_archetype_enrichment_allgenes.tsv` — long format, same columns
+  as script 28 (`layer, archetype, regulon, TF, regulation_direction, overlap,
+  n_markers, n_targets, universe, log2_or, pval, fdr, neglog10_fdr, arch_letter`).
+- `30.human_l23_enrichment_allgenes_neglog10fdr.tsv`,
+  `30.human_l23_enrichment_allgenes_log2or.tsv` — regulon × archetype matrices,
+  columns = `arch_letter` (`A' B' C' D'`).
+- `30.human_l23_regulon_archetype_enrichment_allgenes.html` — two-panel heatmap
+  (activating `+/+`, repressing `-/+`), colored by log2 OR, `*` where FDR<1e-5; rows
+  shown when log2 OR>2 AND FDR<1e-5 in ≥1 archetype (44 activating, 31 repressing).
+
+Same archetype relabel as script 28 (`D' C' B' A'` → columns sort `A' B' C' D'`).
+Selection thresholds: `MIN_REGULON_GENES=5`, `LOG2OR_SHOW=2`, `STAR_FDR=1e-5` (script
+28 uses the looser `STAR_FDR=1e-2`).
