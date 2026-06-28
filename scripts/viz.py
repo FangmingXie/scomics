@@ -261,6 +261,75 @@ def save_archetype_scatter_pdf(xp, labels, panels, aa, title, out_path,
     print(f"  Saved {out_path}")
 
 
+def save_volcano_pdf(deg_df, title, out_path,
+                     fdr_thresh=0.05, log2fc_thresh=np.log2(1.5), n_label=5,
+                     highlight_genes=(),
+                     color_up='#d62728', color_dn='#1f77b4', color_ns='#aaaaaa',
+                     s=6, dpi=300):
+    """Save a single-panel NR-vs-DR volcano as a vectorized PDF (rasterized points).
+
+    Static, matplotlib counterpart of the plotly volcano in 45.v4.viz_volcano_vx3_bins.
+    x-axis = shrunk log2FC (DR / NR), y-axis = -log10(FDR). Points are drawn rasterized
+    so the dense cloud is a single embedded bitmap; axes/text/threshold lines/gene labels
+    stay vector. Genes are split into up-in-DR (positive log2FC, red), up-in-NR (negative,
+    blue), and non-significant (gray).
+
+    deg_df: DataFrame with columns 'gene', 'log2FC' (shrunk), 'fdr'. Rows with NaN fdr
+            should already be dropped by the caller (DESeq2 independent filtering).
+    n_label: number of top significant genes (smallest fdr) to annotate per direction
+             (n_label up-in-DR + n_label up-in-NR).
+    highlight_genes: extra gene names to always label and ring (drawn with a black edge),
+             in addition to the per-direction top-n_label genes.
+    """
+    plt.rcParams['pdf.fonttype'] = 42   # editable vector text
+    df = deg_df.copy()
+    df['neg_log10_fdr'] = -np.log10(df['fdr'].clip(lower=1e-300))
+
+    sig_up = (df['fdr'] < fdr_thresh) & (df['log2FC'] >  log2fc_thresh)
+    sig_dn = (df['fdr'] < fdr_thresh) & (df['log2FC'] < -log2fc_thresh)
+    ns     = ~(sig_up | sig_dn)
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.scatter(df.loc[ns, 'log2FC'], df.loc[ns, 'neg_log10_fdr'],
+               c=color_ns, s=s * 0.6, linewidths=0, alpha=0.4, rasterized=True,
+               label='n.s.')
+    ax.scatter(df.loc[sig_dn, 'log2FC'], df.loc[sig_dn, 'neg_log10_fdr'],
+               c=color_dn, s=s, linewidths=0, alpha=0.8, rasterized=True,
+               label=f'up in NR ({int(sig_dn.sum())})')
+    ax.scatter(df.loc[sig_up, 'log2FC'], df.loc[sig_up, 'neg_log10_fdr'],
+               c=color_up, s=s, linewidths=0, alpha=0.8, rasterized=True,
+               label=f'up in DR ({int(sig_up.sum())})')
+
+    # threshold lines (vector)
+    ax.axhline(-np.log10(fdr_thresh), color='black', lw=1, ls='--')
+    ax.axvline(-log2fc_thresh, color='black', lw=1, ls='--')
+    ax.axvline(log2fc_thresh, color='black', lw=1, ls='--')
+
+    # label top-n_label per direction + any explicit highlight genes (vector text)
+    label_genes = set(df[sig_up].nsmallest(n_label, 'fdr')['gene'])
+    label_genes |= set(df[sig_dn].nsmallest(n_label, 'fdr')['gene'])
+    label_genes |= set(highlight_genes)
+    highlight = set(highlight_genes)
+    for _, r in df[df['gene'].isin(label_genes)].iterrows():
+        is_hl = r['gene'] in highlight
+        if is_hl:   # ring the highlighted points for emphasis
+            ax.scatter([r['log2FC']], [r['neg_log10_fdr']], s=s * 4,
+                       facecolors='none', edgecolors='black', linewidths=1.2, zorder=4)
+        ax.annotate(r['gene'], (r['log2FC'], r['neg_log10_fdr']),
+                    fontsize=8, fontweight='bold' if is_hl else 'normal',
+                    xytext=(3, 3), textcoords='offset points', zorder=5)
+
+    ax.set_xlabel('log2FC (DR / NR), shrunk')
+    ax.set_ylabel('-log10(FDR)')
+    ax.set_title(title)
+    ax.legend(frameon=False, markerscale=1.5, loc='upper left', bbox_to_anchor=(1.02, 1.0))
+    sns.despine(ax=ax)
+    fig.tight_layout()
+    fig.savefig(out_path, bbox_inches='tight', dpi=dpi)
+    plt.close(fig)
+    print(f"  Saved {out_path}")
+
+
 def save_metrics_plot(noc_grid, ev_grid, av_grid, av_rep_grid, ndim, title, out_path):
     """Save EV / ARV / effective-EV metrics PNG."""
     fig, ax = plt.subplots(figsize=(6, 4))
