@@ -2,10 +2,10 @@
 #
 # Static, publication-ready counterpart of the interactive gene scatter produced by
 # scripts 16 and 18.3 (which both also do non-plotting work and handle more than P56).
-# This script is plotting-only and P56-only: it loads the cached P56 labels/coords and
-# vertices, normalizes the P56 expression matrix, and renders one PDF page per fixed gene
-# (PC1-PC3, PC1-PC4, PC3-PC4 panels). Scatter points are rasterized; axes/text/archetype
-# overlay stay vector. No recomputation of labels, PCA, or archetypes.
+# This script is plotting-only and P56-only: it loads the cached P56 coords, normalizes the
+# P56 expression matrix, and renders one PDF page per fixed gene (PC1-PC3, PC1-PC4, PC3-PC4
+# panels). Scatter points are rasterized; axes/text stay vector. No archetype-vertex overlay;
+# no recomputation of labels, PCA, or archetypes.
 
 import os
 import sys
@@ -25,7 +25,6 @@ INPUT_FILE            = os.path.join(PROJECT_ROOT, 'links', 'astro', 'gao25_scrn
 RES_DIR               = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro')
 FIG_DIR               = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'astro')
 PARQUET_ALL_IN        = os.path.join(RES_DIR, '17.labels_all_ages.parquet')
-ARCHETYPE_VERTICES_IN = os.path.join(RES_DIR, '17.archetype_vertices_knn.parquet')
 PDF_GENE_SCATTER      = os.path.join(FIG_DIR, '18.4.gene_scatter.pdf')
 
 # (col_x, col_y, xlabel, ylabel) — retained cols: 0=PC1, 1=PC3, 2=PC4 (PC2 dropped)
@@ -39,12 +38,9 @@ FIXED_GENES = [
 
 os.makedirs(FIG_DIR, exist_ok=True)
 
-# --- load cached coords + archetype vertices (P56 joint PCA, PC2 dropped) ---
+# --- load cached coords (P56 joint PCA, PC2 dropped) ---
 df_all  = pd.read_parquet(PARQUET_ALL_IN)
 pc_cols = [c for c in df_all.columns if c.startswith('PC')]
-
-df_vertices = pd.read_parquet(ARCHETYPE_VERTICES_IN)
-aa_vis = df_vertices.values.T[:3, :]  # (3, NOC) — rows PC1, PC3, PC4
 
 df_p56 = df_all[df_all['age'] == 'P56'].reset_index(drop=True)
 xp_p56 = df_p56[pc_cols].values
@@ -75,8 +71,8 @@ save_gene_scatter_pdf(
     xp=xp_p56,
     gene_vals=gene_vals,
     panels=PANELS,
-    aa=aa_vis,
-    title='P56 astrocytes (joint PCA, no PC2) NOC=4 — fixed gene expression',
+    aa=None,
+    title='P56 astrocytes (joint PCA, no PC2) — fixed gene expression',
     out_path=PDF_GENE_SCATTER,
 )
 print('Done.')
