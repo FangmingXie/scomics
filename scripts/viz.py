@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -162,6 +163,97 @@ def save_score_scatter_pdf(xp, scores, names, aa, title, out_path,
         ax.set_title(f'Score {name}')
         fig.colorbar(sc, ax=ax, label='archetype score [0–1]', shrink=0.8)
         sns.despine(ax=ax)
+    fig.suptitle(title)
+    fig.tight_layout()
+    fig.savefig(out_path, bbox_inches='tight', dpi=dpi)
+    plt.close(fig)
+    print(f"  Saved {out_path}")
+
+
+def save_gene_scatter_pdf(xp, gene_vals, panels, aa, title, out_path,
+                          cmap='RdBu_r', pctile=(9, 95), s=5, dpi=300,
+                          colorbar_title='z-score'):
+    """Save a multi-page gene-expression scatter PDF (one page per gene).
+
+    Static, vectorized counterpart of `gene_expr_scatter_html`. Each page renders the
+    same gene across all `panels` (e.g. PC1-PC3, PC1-PC4, PC3-PC4); points are drawn
+    rasterized so each dense cloud is a single embedded bitmap, while axes/text/archetype
+    overlay stay vector. Per-gene color scale is clipped at the `pctile` (low, high).
+
+    xp:        (n_cells, n_dims) coordinate array.
+    gene_vals: dict[str, np.ndarray] mapping gene name -> per-cell value (e.g. z-score).
+    panels:    list of (col_x, col_y, xlabel, ylabel) into xp columns.
+    aa:        (n_dims, n_archetypes) archetype coords; diamonds + closing polygon overlay.
+    """
+    plt.rcParams['pdf.fonttype'] = 42   # editable vector text
+    n_panels = len(panels)
+    with PdfPages(out_path) as pdf:
+        for gene, vals in gene_vals.items():
+            vals = np.asarray(vals)
+            vmin, vmax = np.nanpercentile(vals, pctile)
+            fig, axes = plt.subplots(1, n_panels, figsize=(4.6 * n_panels, 4.2),
+                                     squeeze=False)
+            for pi, (cx, cy, xl, yl) in enumerate(panels):
+                ax = axes[0, pi]
+                sc = ax.scatter(xp[:, cx], xp[:, cy], c=vals, cmap=cmap,
+                                vmin=vmin, vmax=vmax, s=s, linewidths=0, rasterized=True)
+                if aa is not None:
+                    ax.plot(list(aa[cx, :]) + [aa[cx, 0]], list(aa[cy, :]) + [aa[cy, 0]],
+                            '-', color='black', linewidth=1.0)
+                    ax.scatter(aa[cx, :], aa[cy, :], marker='D', color='black',
+                               s=30, zorder=3)
+                ax.set_xlabel(xl)
+                ax.set_ylabel(yl)
+                ax.set_title(f'{xl} vs {yl}')
+                sns.despine(ax=ax)
+            fig.colorbar(sc, ax=axes[0, :].tolist(), label=colorbar_title, shrink=0.8)
+            fig.suptitle(f'{gene} — {title}')
+            pdf.savefig(fig, bbox_inches='tight', dpi=dpi)
+            plt.close(fig)
+    print(f"  Saved {out_path}")
+
+
+def save_archetype_scatter_pdf(xp, labels, panels, aa, title, out_path,
+                               label_order=None, cmap='tab10', s=5, dpi=300):
+    """Save a single-page categorical scatter PDF colored by archetype label.
+
+    Static, vectorized counterpart of `scatter_categorical_html` (archetype coloring).
+    One row of panels (e.g. PC1-PC3, PC1-PC4, PC3-PC4); each cell is colored by its
+    discrete `labels` value via the `cmap` color cycle, with a shared legend. Points are
+    drawn rasterized (single embedded bitmap per panel); axes/text/archetype overlay and
+    legend stay vector.
+
+    xp:          (n_cells, n_dims) coordinate array.
+    labels:      (n_cells,) array of categorical labels (e.g. 'Arch1'..'Arch4').
+    panels:      list of (col_x, col_y, xlabel, ylabel) into xp columns.
+    aa:          (n_dims, n_archetypes) archetype coords; diamonds + closing polygon overlay.
+    label_order: optional ordered list of label values (defaults to sorted unique).
+    """
+    plt.rcParams['pdf.fonttype'] = 42   # editable vector text
+    labels = np.asarray(labels)
+    if label_order is None:
+        label_order = sorted(np.unique(labels))
+    cycle = plt.get_cmap(cmap).colors
+    label_to_color = {lab: cycle[i % len(cycle)] for i, lab in enumerate(label_order)}
+
+    n_panels = len(panels)
+    fig, axes = plt.subplots(1, n_panels, figsize=(4.6 * n_panels, 4.2), squeeze=False)
+    for pi, (cx, cy, xl, yl) in enumerate(panels):
+        ax = axes[0, pi]
+        for lab in label_order:
+            m = labels == lab
+            ax.scatter(xp[m, cx], xp[m, cy], color=label_to_color[lab], s=s,
+                       linewidths=0, rasterized=True, label=lab)
+        if aa is not None:
+            ax.plot(list(aa[cx, :]) + [aa[cx, 0]], list(aa[cy, :]) + [aa[cy, 0]],
+                    '-', color='black', linewidth=1.0)
+            ax.scatter(aa[cx, :], aa[cy, :], marker='D', color='black', s=30, zorder=3)
+        ax.set_xlabel(xl)
+        ax.set_ylabel(yl)
+        ax.set_title(f'{xl} vs {yl}')
+        sns.despine(ax=ax)
+    axes[0, -1].legend(title='archetype', loc='center left', bbox_to_anchor=(1.02, 0.5),
+                       frameon=False, markerscale=2)
     fig.suptitle(title)
     fig.tight_layout()
     fig.savefig(out_path, bbox_inches='tight', dpi=dpi)
