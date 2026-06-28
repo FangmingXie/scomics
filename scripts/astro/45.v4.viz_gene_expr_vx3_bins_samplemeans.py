@@ -42,7 +42,7 @@ N_BINS       = 4
 
 COLOR_NR  = '#1f77b4'   # matches "up in NR" (blue) in the volcano
 COLOR_DR  = '#d62728'   # matches "up in DR" (red) in the volcano
-DODGE     = 0.12        # horizontal NR/DR separation per bin
+DODGE     = 0.0         # NR/DR share the exact same x per bin
 JITTER    = 0.03        # per-sample dot horizontal jitter
 
 os.makedirs(FIG_DIR, exist_ok=True)
