@@ -38,7 +38,8 @@ Outputs:
   local_data/res/it/42.gao25_L2_3_regulon_archetype_enrichment.tsv   (long format)
   local_data/res/it/42.gao25_L2_3_enrichment_neglog10fdr.tsv         (matrix)
   local_data/res/it/42.gao25_L2_3_enrichment_log2or.tsv              (matrix)
-  local_data/fig/it/42.gao25_L2_3_regulon_archetype_enrichment.html  (heatmap)
+  local_data/fig/it/42.gao25_L2_3_regulon_archetype_enrichment.html             (significant-only heatmap)
+  local_data/fig/it/42.gao25_L2_3_regulon_archetype_enrichment_allregulons.html (all-regulons heatmap)
 """
 
 import os
@@ -80,8 +81,8 @@ LAYER = dict(layer='L2_3', subclass_val='L2/3', noc=3,
 KEEP_DIRECTIONS = {'+/+', '-/+'}  # keep only regulons with a positive R2G (second) sign
 ARCHETYPE_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']  # archetype_1 -> A, etc.
 MIN_REGULON_GENES = 5    # drop regulons with fewer than this many targets in-universe
-LOG2OR_SHOW = 2.0        # a regulon row is shown if log2 OR > this in >= 1 archetype
-STAR_FDR = 1e-5          # heatmap cells marked '*' where FDR < this
+LOG2OR_SHOW = 3.0        # a regulon row is shown if log2 OR > this in >= 1 archetype
+STAR_FDR = 1e-2          # heatmap cells marked '*' where FDR < this
 COLOR_ABS = 5.0          # fixed log2 OR colorbar range [-COLOR_ABS, COLOR_ABS] for all heatmaps
 
 os.makedirs(RES_DIR, exist_ok=True)
@@ -202,17 +203,28 @@ def enrich_layer(cfg, adatas):
     fdr_mat.to_csv(os.path.join(RES_DIR, f'42.gao25_{layer}_enrichment_neglog10fdr.tsv'), sep='\t')
     or_mat.to_csv(os.path.join(RES_DIR, f'42.gao25_{layer}_enrichment_log2or.tsv'), sep='\t')
 
-    # ---- two heatmaps (+/+ and -/+), colored by log2 OR, '*' where FDR < STAR_FDR ----
+    # two heatmaps: significance-filtered rows, and every regulon
+    render_heatmap(long, N, layer, show_all=False)
+    render_heatmap(long, N, layer, show_all=True)
+    return long
+
+
+def render_heatmap(long, N, layer, show_all):
+    """Render the +/+ and -/+ log2-OR heatmaps (colored by log2 OR, '*' where FDR < STAR_FDR).
+
+    show_all=False: keep only regulons with log2 OR > LOG2OR_SHOW AND FDR < STAR_FDR in
+                    >= 1 archetype within that sign (script 41 style, significant-only).
+    show_all=True : draw every regulon (>= MIN_REGULON_GENES targets), no row removal.
+    """
     panels = [('+/+', 'activating'), ('-/+', 'repressing')]
 
-    # collect each panel's shown matrices (regulons with log2 OR > LOG2OR_SHOW AND
-    # FDR < STAR_FDR in >= 1 archetype within that sign)
     panel_show = []
     for sign, _lbl in panels:
         sub = long[long['regulation_direction'] == sign]
         orm = sub.pivot(index='regulon', columns='arch_letter', values='log2_or')
         fdm = sub.pivot(index='regulon', columns='arch_letter', values='fdr')
-        keep = orm.index[((orm > LOG2OR_SHOW) & (fdm < STAR_FDR)).any(axis=1)]
+        keep = orm.index if show_all else \
+            orm.index[((orm > LOG2OR_SHOW) & (fdm < STAR_FDR)).any(axis=1)]
         if len(keep) == 0:
             panel_show.append(None)
             continue
@@ -232,12 +244,13 @@ def enrich_layer(cfg, adatas):
             overlap=sub.pivot(index='regulon', columns='arch_letter', values='overlap').loc[order],
             ntarg=sub.pivot(index='regulon', columns='arch_letter', values='n_targets').loc[order],
         ))
-        print(f'    {sign}: {len(keep)} regulons '
-              f'(log2 OR>{LOG2OR_SHOW} AND FDR<{STAR_FDR:g} in >=1 archetype) shown')
+        crit = 'all' if show_all else \
+            f'log2 OR>{LOG2OR_SHOW} AND FDR<{STAR_FDR:g} in >=1 archetype'
+        print(f'    {sign}: {len(keep)} regulons ({crit}) shown')
 
     if all(p is None for p in panel_show):
-        print(f'    [skip heatmap] no regulons meeting both criteria for {layer}')
-        return long
+        print(f'    [skip heatmap] no regulons for {layer} (show_all={show_all})')
+        return
 
     max_rows = max(len(p['order']) for p in panel_show if p is not None)
 
@@ -274,15 +287,16 @@ def enrich_layer(cfg, adatas):
                           xanchor='left', len=0.9, thickness=14),
         )
 
+    scope = 'all regulons' if show_all else f'* FDR<{STAR_FDR:g}'
     fig.update_layout(
         title=f'gao25 V1 L2/3 IT — archetype marker enrichment in regulons '
-              f'(log2 OR; * FDR<{STAR_FDR:g}; N={N} genes)',
+              f'(log2 OR; {scope}; N={N} genes)',
         height=max(400, 18 * max_rows + 180), width=1000,
         **layout_caxes,
     )
-    out_html = os.path.join(FIG_DIR, f'42.gao25_{layer}_regulon_archetype_enrichment.html')
+    suffix = '_allregulons' if show_all else ''
+    out_html = os.path.join(FIG_DIR, f'42.gao25_{layer}_regulon_archetype_enrichment{suffix}.html')
     _write_fig(fig, out_html)  # HTML whose screenshot button exports SVG by default
-    return long
 
 
 def main():
