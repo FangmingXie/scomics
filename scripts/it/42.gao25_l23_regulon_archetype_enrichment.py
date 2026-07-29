@@ -63,7 +63,7 @@ FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
 
 INPUT_CHENG22 = os.path.join(PROJECT_ROOT, 'links', 'it', 'superdupermegaRNA_cheng22_IT_P28NR.h5ad')
 INPUT_YOO25 = os.path.join(PROJECT_ROOT, 'links', 'it', 'superdupermegaRNA_yoo25_IT_P21.h5ad')
-REGULONS = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'reguon_gene_table_gao25_v1l23.csv')
+REGULONS = os.path.join(PROJECT_ROOT, 'links', 'it', 'regulon_gene_table_gao25_v1l23.csv')
 
 # shared dataset config (tag, h5ad path, subclass column, depth column)
 DATASETS = [
