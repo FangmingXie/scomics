@@ -8,6 +8,7 @@ Reads:
   local_data/res/astro/45.v4.deg_vx3_bin{1..4}_NR_vs_DR_all.tsv
 Outputs:
   local_data/fig/astro/45.v4.volcano_vx3_bins_NR_vs_DR.html
+  local_data/fig/astro/45.v4.deg_counts_vx3_bins_NR_vs_DR.html
 """
 
 import os
@@ -20,18 +21,26 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 DEG_DIR      = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro')
 FIG_DIR      = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'astro')
 OUT_VOLCANO  = os.path.join(FIG_DIR, '45.v4.volcano_vx3_bins_NR_vs_DR.html')
+OUT_COUNTS   = os.path.join(FIG_DIR, '45.v4.deg_counts_vx3_bins_NR_vs_DR.html')
 DEG_ALL_TMPL = os.path.join(DEG_DIR, '45.v4.deg_vx3_bin{b}_NR_vs_DR_all.tsv')
 
 N_BINS        = 4
 FDR_THRESH    = 0.05
-LOG2FC_THRESH = np.log2(1.5)
+LOG2FC_THRESH = np.log2(1.5)  # threshold used for the volcano panels
 N_LABEL       = 10  # top genes labeled per panel
+
+# log2FC thresholds for the DEG-count bar panels (all with FDR < FDR_THRESH)
+COUNT_PANELS = [(np.log2(1.5), '|log2FC_shrink| > log2(1.5)'),
+                (1.0,          '|log2FC_shrink| > 1'),
+                (2.0,          '|log2FC_shrink| > 2')]
 
 COLOR_UP = '#d62728'  # up in DR (positive log2FC)
 COLOR_DN = '#1f77b4'  # up in NR (negative log2FC)
 COLOR_NS = '#aaaaaa'
 
 os.makedirs(FIG_DIR, exist_ok=True)
+
+deg_counts = []  # (bin_label, n_up_DR, n_up_NR) collected per bin for the count plot
 
 print('Building DESeq2 volcano plots...')
 fig_v = make_subplots(
@@ -81,6 +90,11 @@ for b in range(N_BINS):
                              showarrow=False, font=dict(size=9), xshift=6, yshift=4,
                              xref=xref, yref=yref)
 
+    up_by_thr = [int(((deg_df['fdr'] < FDR_THRESH) & (deg_df['log2FC'] >  thr)).sum())
+                 for thr, _ in COUNT_PANELS]
+    dn_by_thr = [int(((deg_df['fdr'] < FDR_THRESH) & (deg_df['log2FC'] < -thr)).sum())
+                 for thr, _ in COUNT_PANELS]
+    deg_counts.append((f'Bin {b + 1}', up_by_thr, dn_by_thr))
     fig_v.layout.annotations[b].text = f'Bin {b + 1} (up DR: {int(sig_up.sum())}, up NR: {int(sig_dn.sum())})'
     fig_v.update_xaxes(title_text='log2FC (DR / NR), shrunk', row=1, col=col)
     if col == 1:
@@ -96,4 +110,32 @@ fig_v.update_layout(
 )
 fig_v.write_html(OUT_VOLCANO)
 print(f'  Saved {OUT_VOLCANO}')
+
+print('Building DESeq2 DEG-count bar plot...')
+n_panels = len(COUNT_PANELS)
+bins     = [c[0] for c in deg_counts][::-1]  # reverse: Bin 4, 3, 2, 1
+
+fig_c = make_subplots(
+    rows=n_panels, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+    subplot_titles=[label for _, label in COUNT_PANELS],
+)
+for p in range(n_panels):
+    row = p + 1
+    n_up_dr = [c[1][p] for c in deg_counts][::-1]
+    n_up_nr = [c[2][p] for c in deg_counts][::-1]
+    fig_c.add_trace(go.Bar(x=bins, y=n_up_dr, name='up in DR', legendgroup='up in DR',
+                           marker_color=COLOR_UP, text=n_up_dr, textposition='outside',
+                           showlegend=(p == 0)), row=row, col=1)
+    fig_c.add_trace(go.Bar(x=bins, y=n_up_nr, name='up in NR', legendgroup='up in NR',
+                           marker_color=COLOR_DN, text=n_up_nr, textposition='outside',
+                           showlegend=(p == 0)), row=row, col=1)
+    fig_c.update_yaxes(title_text='number of DEGs', row=row, col=1)
+fig_c.update_xaxes(title_text='VX3 bin', row=n_panels, col=1)
+fig_c.update_layout(
+    barmode='group',
+    title=(f'NR vs DR pseudobulk DESeq2 DEG counts across VX3 bins (FDR<{FDR_THRESH})'),
+    width=700, height=360 * n_panels, legend=dict(itemsizing='constant'),
+)
+fig_c.write_html(OUT_COUNTS)
+print(f'  Saved {OUT_COUNTS}')
 print('Done.')
