@@ -21,6 +21,7 @@ Reads:
 Outputs:
   local_data/fig/l23_evo/39.pc1_vs_gene_expr_mouse_human.pdf
   local_data/fig/l23_evo/39.pc1_pc2_gene_expr_mouse_human.pdf
+  local_data/fig/l23_evo/39.pc1_binmean_overlay_mouse_human.pdf
 
 Usage:
   python 39.viz.pc1_vs_gene_expr_mouse_human.py [--genes Robo1 Rorb ...]
@@ -47,6 +48,7 @@ INPUT_MOUSE = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'cheng22_mouse_IT_P
 INPUT_HUMAN = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'jorstad23_human_WithinArea_L23IT.h5ad')
 OUT_PDF     = os.path.join(OUT_FIG_DIR, '39.pc1_vs_gene_expr_mouse_human.pdf')
 OUT_PDF_EMB = os.path.join(OUT_FIG_DIR, '39.pc1_pc2_gene_expr_mouse_human.pdf')
+OUT_PDF_OVL = os.path.join(OUT_FIG_DIR, '39.pc1_binmean_overlay_mouse_human.pdf')
 
 # --- parameters ---
 MOUSE_SUBCLASS = 'L2/3'
@@ -62,6 +64,9 @@ DPI            = 300
 N_PC1_BINS     = 10          # PC1 bins for the mean-expression overlay line
 EMB_CMAP       = 'RdBu_r'    # PC1-vs-PC2 expression colormap
 EMB_PCTILE     = (2, 98)     # per-panel color-scale clip percentiles
+MOUSE_COLOR    = '#2166ac'   # mouse curve in the overlay PDF
+HUMAN_COLOR    = '#b2182b'   # human curve in the overlay PDF
+FILL_ALPHA     = 0.3         # alpha for the +/- std fill bands
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--genes', nargs='+', default=GENES,
@@ -80,6 +85,21 @@ def binned_mean(x, y, n_bins):
     means   = np.array([y[idx == b].mean() if np.any(idx == b) else np.nan for b in range(n_bins)])
     keep    = ~np.isnan(means)
     return centers[keep], means[keep]
+
+
+def binned_stats_relative(x, y, n_bins):
+    """Bin y into n_bins equal-width bins over x's own [min, max] range.
+
+    Returns (rel_centers, means, stds) for all n_bins. rel_centers are the bin centers
+    mapped to [0, 1] ((b+0.5)/n_bins), so different-range inputs (mouse vs human PC1)
+    overlay on exactly the same n_bins x-positions. Empty bins yield NaN mean/std.
+    """
+    edges   = np.linspace(np.min(x), np.max(x), n_bins + 1)
+    idx     = np.clip(np.digitize(x, edges[1:-1]), 0, n_bins - 1)
+    means   = np.array([y[idx == b].mean() if np.any(idx == b) else np.nan for b in range(n_bins)])
+    stds    = np.array([y[idx == b].std()  if np.any(idx == b) else np.nan for b in range(n_bins)])
+    centers = (np.arange(n_bins) + 0.5) / n_bins
+    return centers, means, stds
 
 
 def load_mouse_expr(genes_mouse, cell_index):
@@ -214,4 +234,29 @@ with PdfPages(OUT_PDF_EMB) as pdf:
         plt.close(fig)
 
 print(f'Saved {OUT_PDF_EMB}')
+
+# --- multi-page PDF: one gene per page, mouse+human mean +/- std over 10 relative PC1 bins ---
+print(f'Writing {OUT_PDF_OVL} ({len(genes)} pages)...')
+with PdfPages(OUT_PDF_OVL) as pdf:
+    for g_mouse, g_human in zip(genes, genes_human):
+        fig, ax = plt.subplots(figsize=(5.4, 4.2))
+
+        for pc1, vals, color, lbl in [
+            (mouse_pc1, mouse_expr[g_mouse].values, MOUSE_COLOR, f'mouse {g_mouse}'),
+            (human_pc1, human_expr[g_human].values, HUMAN_COLOR, f'human {g_human}'),
+        ]:
+            bc, bm, bs = binned_stats_relative(pc1, vals, N_PC1_BINS)
+            ax.fill_between(bc, bm - bs, bm + bs, color=color, alpha=FILL_ALPHA, linewidth=0)
+            ax.plot(bc, bm, '-o', color=color, linewidth=1.5, markersize=4, label=lbl)
+
+        ax.set_xlabel(f'PC1 (relative, per-species min–max; {N_PC1_BINS} bins)')
+        ax.set_ylabel('log2(CP10k+1) expr')
+        ax.set_title(f'{g_mouse} / {g_human} — mean ± std over PC1 bins')
+        ax.legend(frameon=False, fontsize=8)
+        sns.despine(ax=ax)
+        fig.tight_layout()
+        pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
+        plt.close(fig)
+
+print(f'Saved {OUT_PDF_OVL}')
 print('Done.')
