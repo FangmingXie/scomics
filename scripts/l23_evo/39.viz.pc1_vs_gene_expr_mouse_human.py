@@ -7,9 +7,10 @@ embedded bitmap, while axes/text stay vector. PC1 is read from the cached PCHA e
 used by scripts 21.viz / 25.viz (no recompute); the same display-only PC1 sign flip is
 applied so orientation matches those archetype figures.
 
-Gene expression:
-  - Mouse h5ad holds raw counts -> normalized here as log2(CP10k + 1) (as in script 21).
-  - Human h5ad holds already-log-normalized X -> used directly.
+Gene expression (both species normalized identically for comparability):
+  - Mouse h5ad holds raw counts in X          -> log2(CP10k + 1) (as in script 21).
+  - Human h5ad holds raw counts in .raw.X     -> log2(CP10k + 1), same formula.
+    (The pre-normalized human X has an unrecorded log base, so it is not used.)
   - Human gene symbol = mouse symbol upper-cased (Robo1 -> ROBO1).
 
 Reads:
@@ -109,24 +110,34 @@ def load_mouse_expr(genes_mouse, cell_index):
 
 
 def load_human_expr(genes_human, cell_index):
-    """Return DataFrame (cells x genes) of already-log-normalized human expression, reindexed to cell_index."""
-    print('Loading human h5ad (already log-normalized)...')
+    """Return DataFrame (cells x genes) of log2(CP10k+1) human expression, reindexed to cell_index.
+
+    Normalized from raw counts (adata.raw.X) with the same log2(CP10k+1) formula as mouse,
+    so both species are on an identical log2-CP10k scale. The pre-normalized adata.X is not
+    used (its log base is unrecorded).
+    """
+    print('Loading human h5ad (raw counts from .raw)...')
     adata = ad.read_h5ad(INPUT_HUMAN)
     print(f'  human cells: {adata.n_obs}')
+    if adata.raw is None:
+        raise ValueError('Human h5ad has no .raw; cannot recompute log2(CP10k+1) from raw counts.')
 
-    gene_names = (adata.var['feature_name'].values
-                  if 'feature_name' in adata.var.columns
-                  else adata.var_names.values)
+    gene_names = (adata.raw.var['feature_name'].values
+                  if 'feature_name' in adata.raw.var.columns
+                  else adata.raw.var_names.values)
     name_set = set(gene_names)
     missing = [g for g in genes_human if g not in name_set]
     if missing:
-        raise ValueError(f'Genes not found in human feature_name: {missing}')
+        raise ValueError(f'Genes not found in human raw.var feature_name: {missing}')
 
+    X_raw  = adata.raw.X.toarray().astype(np.float32)
+    depths = X_raw.sum(axis=1, keepdims=True)
+    depths[depths == 0] = 1
     data = {}
     for g in genes_human:
         idx = int(np.where(gene_names == g)[0][0])
-        data[g] = adata.X[:, idx].toarray().astype(np.float32).ravel()
-        print(f'  human {g}: var index {idx}')
+        data[g] = np.log2(X_raw[:, idx] / depths[:, 0] * 1e4 + 1)
+        print(f'  human {g}: raw.var index {idx}')
     df = pd.DataFrame(data, index=adata.obs_names.values)
     df = df.reindex(cell_index)
     if df.isna().any().any():
