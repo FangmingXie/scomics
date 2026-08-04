@@ -1,17 +1,18 @@
-"""PC1 vs regulon-target mean expression — mouse Cheng22 & human Jorstad23 L2/3 IT.
+"""Per-bin boxplots of regulon-target mean expression along PC1 — mouse Cheng22 & human Jorstad23 L2/3 IT.
 
-Script-40-style views, but the y-value is the per-cell MEAN expression of a regulon's
-activated (+/+) target genes rather than a single gene. For each selected regulon, plot that
-mean-target expression along PCHA PC1, mouse and human side by side, in the same four PDF
-styles as script 40 (scatter+mean, PC1-vs-PC2 colored, mean±std overlay, per-bin boxplots).
+For each selected regulon, the per-cell score is the MEAN across the regulon's activated (+/+)
+target genes of each gene's min-max-normalized expression (each gene scaled to [0, 1] using its
+0th–99th expression percentile BEFORE averaging, so highly-expressed genes don't dominate the
+mean). That score is shown as boxplots across 10 PC1 bins, mouse and human side by side (one
+regulon per page). Mouse and human panels use INDEPENDENT y-axes (not shared).
 
-Regulons are SPECIES-SPECIFIC (each species uses its own SCENIC+ regulon):
-  - Meis2 : mouse yoo25 (Meis2_+/+) + human Wang25 (MEIS2_+/+)      -> both species
-  - Pou6f2: human Wang25 (POU6F2_+/+) only (no mouse regulon exists) -> human-only panel
+Regulons are SPECIES-SPECIFIC (each species uses its own SCENIC+ regulon): mouse from yoo25,
+human from Wang25. Selected TFs: Meis2, Nfia, Nfib, Rfx3, Satb1, Jdp2 (both species) and Maf
+(human-only — no mouse regulon exists, so its mouse panel is omitted and the layout adapts).
 Only +/+ (activated) targets are used. Target sets are intersected with each species' gene
 universe; coverage is printed (no fail-fast on regulon targets).
 
-Expression (both species, log2(CP10k+1) as in scripts 21/40):
+Expression (both species, log2(CP10k+1) as in scripts 21/40, then per-gene min-max [0,1]):
   - Mouse h5ad: raw counts in X       (subset Subclass == 'L2/3').
   - Human h5ad: raw counts in .raw.X.
 
@@ -23,9 +24,6 @@ Reads:
   links/l23_evo/cheng22_mouse_IT_P28.h5ad
   links/l23_evo/jorstad23_human_WithinArea_L23IT.h5ad
 Outputs:
-  local_data/fig/l23_evo/42.pc1_vs_regulon_expr_mouse_human.pdf
-  local_data/fig/l23_evo/42.pc1_pc2_regulon_expr_mouse_human.pdf
-  local_data/fig/l23_evo/42.pc1_binmean_overlay_regulon_mouse_human.pdf
   local_data/fig/l23_evo/42.pc1_regulon_expr_boxbins_mouse_human.pdf
 """
 
@@ -48,61 +46,36 @@ IN_MOUSE_REG = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '40.yoo25_L
 IN_HUMAN_REG = os.path.join(OUT_RES_DIR, '27.human_wang25_regulon_targets.tsv')
 INPUT_MOUSE  = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'cheng22_mouse_IT_P28.h5ad')
 INPUT_HUMAN  = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'jorstad23_human_WithinArea_L23IT.h5ad')
-OUT_PDF      = os.path.join(OUT_FIG_DIR, '42.pc1_vs_regulon_expr_mouse_human.pdf')
-OUT_PDF_EMB  = os.path.join(OUT_FIG_DIR, '42.pc1_pc2_regulon_expr_mouse_human.pdf')
-OUT_PDF_OVL  = os.path.join(OUT_FIG_DIR, '42.pc1_binmean_overlay_regulon_mouse_human.pdf')
 OUT_PDF_BOX  = os.path.join(OUT_FIG_DIR, '42.pc1_regulon_expr_boxbins_mouse_human.pdf')
 
 # --- parameters ---
 MOUSE_SUBCLASS = 'L2/3'
 # Regulon selection: per-species regulon key in each species' regulon table (None = absent).
 REGULONS = [
-    {'name': 'Meis2',  'mouse': 'Meis2_+/+',  'human': 'MEIS2_+/+'},
-    {'name': 'Pou6f2', 'mouse': None,         'human': 'POU6F2_+/+'},
+    {'name': 'Meis2', 'mouse': 'Meis2_+/+', 'human': 'MEIS2_+/+'},
+    {'name': 'Nfia',  'mouse': 'Nfia_+/+',  'human': 'NFIA_+/+'},
+    {'name': 'Nfib',  'mouse': 'Nfib_+/+',  'human': 'NFIB_+/+'},
+    {'name': 'Rfx3',  'mouse': 'Rfx3_+/+',  'human': 'RFX3_+/+'},
+    {'name': 'Satb1', 'mouse': 'Satb1_+/+', 'human': 'SATB1_+/+'},
+    {'name': 'Jdp2',  'mouse': 'Jdp2_+/+',  'human': 'JDP2_+/+'},
+    {'name': 'Maf',   'mouse': None,        'human': 'MAF_+/+'},   # no mouse regulon
 ]
 # Display-only PC1/PC2 sign flips, matching archetype figures 21.viz / 25.viz.
 MOUSE_PC1_SIGN = 1.0    # mouse FLIP = [1, -1] -> PC1 unchanged, PC2 flipped
 MOUSE_PC2_SIGN = -1.0
 HUMAN_PC1_SIGN = -1.0   # human FLIP = [-1, 1] -> PC1 flipped, PC2 unchanged
 HUMAN_PC2_SIGN = 1.0
-POINT_SIZE     = 4
 DPI            = 300
 N_PC1_BINS     = 10
-EMB_CMAP       = 'RdBu_r'
-EMB_PCTILE     = (2, 98)
+NORM_PCTILE    = (0, 99)   # per-gene min-max normalization percentiles (before averaging)
 MOUSE_COLOR    = '#2166ac'
 HUMAN_COLOR    = '#b2182b'
 FILL_ALPHA     = 0.3
-YLABEL         = 'mean target log2(CP10k+1)'
+YLABEL         = 'mean min-max target expr [0–1]'
 MOUSE_TITLE    = 'Cheng22 mouse L2/3 IT'
 HUMAN_TITLE    = 'Jorstad23 human L2/3 IT'
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
-
-
-def binned_mean(x, y, n_bins):
-    """Mean of y within n_bins equal-width bins over x; returns (bin_centers, means) for non-empty bins."""
-    edges   = np.linspace(np.min(x), np.max(x), n_bins + 1)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    idx     = np.clip(np.digitize(x, edges[1:-1]), 0, n_bins - 1)
-    means   = np.array([y[idx == b].mean() if np.any(idx == b) else np.nan for b in range(n_bins)])
-    keep    = ~np.isnan(means)
-    return centers[keep], means[keep]
-
-
-def binned_stats_relative(x, y, n_bins):
-    """Bin y into n_bins equal-width bins over x's own [min, max] range.
-
-    Returns (rel_centers, means, stds) for all n_bins. rel_centers are the bin centers
-    mapped to [0, 1] ((b+0.5)/n_bins), so different-range inputs (mouse vs human PC1)
-    overlay on exactly the same n_bins x-positions. Empty bins yield NaN mean/std.
-    """
-    edges   = np.linspace(np.min(x), np.max(x), n_bins + 1)
-    idx     = np.clip(np.digitize(x, edges[1:-1]), 0, n_bins - 1)
-    means   = np.array([y[idx == b].mean() if np.any(idx == b) else np.nan for b in range(n_bins)])
-    stds    = np.array([y[idx == b].std()  if np.any(idx == b) else np.nan for b in range(n_bins)])
-    centers = (np.arange(n_bins) + 0.5) / n_bins
-    return centers, means, stds
 
 
 def binned_groups(x, y, n_bins):
@@ -143,7 +116,11 @@ def draw_boxbins(ax, positions, groups, color, title):
 
 
 def load_regulon_scores(h5ad_path, regulon_targets, cell_index, use_raw, subclass=None):
-    """Per-cell mean log2(CP10k+1) expression of each regulon's target genes, aligned to cell_index.
+    """Per-cell mean of each regulon's target genes (per-gene min-max normalized), aligned to cell_index.
+
+    Each target gene's log2(CP10k+1) expression is min-max scaled to [0, 1] using its own
+    NORM_PCTILE (0th–99th) percentiles BEFORE averaging across the regulon's genes, so
+    highly-expressed genes do not dominate the mean.
 
     regulon_targets: dict regname -> set of target symbols in this species' casing.
     use_raw: read raw counts from adata.raw.X (human) vs adata.X (mouse).
@@ -168,10 +145,15 @@ def load_regulon_scores(h5ad_path, regulon_targets, cell_index, use_raw, subclas
     depths = X_raw.sum(axis=1, keepdims=True)
     depths[depths == 0] = 1
 
+    def minmax01(v):
+        lo, hi = np.percentile(v, NORM_PCTILE)
+        rng = hi - lo if hi > lo else 1.0
+        return np.clip((v - lo) / rng, 0.0, 1.0)
+
     present = {reg: [g for g in tgs if g in name2idx] for reg, tgs in regulon_targets.items()}
     union = sorted({g for gs in present.values() for g in gs})
     expr = pd.DataFrame(
-        {g: np.log2(X_raw[:, name2idx[g]] / depths[:, 0] * 1e4 + 1) for g in union},
+        {g: minmax01(np.log2(X_raw[:, name2idx[g]] / depths[:, 0] * 1e4 + 1)) for g in union},
         index=adata.obs_names.values,
     )
 
@@ -237,78 +219,13 @@ def panels_for(name):
 
 plt.rcParams['pdf.fonttype'] = 42   # editable vector text
 
-# --- PDF 1: PC1 vs mean-target expression scatter + bin-mean line ---
-print(f'Writing {OUT_PDF} ({len(REGULONS)} pages)...')
-with PdfPages(OUT_PDF) as pdf:
-    for r in REGULONS:
-        panels = panels_for(r['name'])
-        fig, axes = plt.subplots(1, len(panels), figsize=(4.6 * len(panels), 4.2), squeeze=False)
-        for ax, p in zip(axes[0], panels):
-            ax.scatter(p['pc1'], p['score'], s=POINT_SIZE, linewidths=0, color='#bbbbbb', rasterized=True)
-            bc, bm = binned_mean(p['pc1'], p['score'], N_PC1_BINS)
-            ax.plot(bc, bm, '-o', color='#c0392b', linewidth=1.5, markersize=4, zorder=3,
-                    label=f'mean over {N_PC1_BINS} PC1 bins')
-            ax.set_xlabel('PC1')
-            ax.set_ylabel(YLABEL)
-            ax.set_title(f"{p['title']}\n{r['name']} regulon ({p['n']} targets)")
-            ax.legend(frameon=False, fontsize=8, loc='upper right')
-            sns.despine(ax=ax)
-        fig.suptitle(f"{r['name']} regulon — PC1 vs mean-target expression")
-        fig.tight_layout()
-        pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
-        plt.close(fig)
-print(f'Saved {OUT_PDF}')
-
-# --- PDF 2: PC1-vs-PC2 colored by mean-target expression ---
-print(f'Writing {OUT_PDF_EMB} ({len(REGULONS)} pages)...')
-with PdfPages(OUT_PDF_EMB) as pdf:
-    for r in REGULONS:
-        panels = panels_for(r['name'])
-        fig, axes = plt.subplots(1, len(panels), figsize=(4.9 * len(panels), 4.2), squeeze=False)
-        for ax, p in zip(axes[0], panels):
-            vmin, vmax = np.nanpercentile(p['score'], EMB_PCTILE)
-            sc = ax.scatter(p['pc1'], p['pc2'], c=p['score'], cmap=EMB_CMAP, vmin=vmin, vmax=vmax,
-                            s=POINT_SIZE, linewidths=0, rasterized=True)
-            ax.set_aspect('equal', adjustable='box')
-            ax.set_xlabel('PC1')
-            ax.set_ylabel('PC2')
-            ax.set_title(f"{p['title']}\n{r['name']} regulon ({p['n']} targets)")
-            fig.colorbar(sc, ax=ax, label=YLABEL, shrink=0.8)
-            sns.despine(ax=ax)
-        fig.suptitle(f"{r['name']} regulon — PC1 vs PC2, colored by mean-target expression")
-        fig.tight_layout()
-        pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
-        plt.close(fig)
-print(f'Saved {OUT_PDF_EMB}')
-
-# --- PDF 3: mouse+human mean +/- std over 10 relative PC1 bins (overlay) ---
-print(f'Writing {OUT_PDF_OVL} ({len(REGULONS)} pages)...')
-with PdfPages(OUT_PDF_OVL) as pdf:
-    for r in REGULONS:
-        panels = panels_for(r['name'])
-        fig, ax = plt.subplots(figsize=(5.4, 4.2))
-        for p in panels:
-            bc, bm, bs = binned_stats_relative(p['pc1'], p['score'], N_PC1_BINS)
-            ax.fill_between(bc, bm - bs, bm + bs, color=p['color'], alpha=FILL_ALPHA, linewidth=0)
-            ax.plot(bc, bm, '-o', color=p['color'], linewidth=1.5, markersize=4,
-                    label=f"{p['sp']} {r['name']} ({p['n']})")
-        ax.set_xlabel(f'PC1 (relative, per-species min–max; {N_PC1_BINS} bins)')
-        ax.set_ylabel(YLABEL)
-        ax.set_title(f"{r['name']} regulon — mean ± std over PC1 bins")
-        ax.legend(frameon=False, fontsize=8)
-        sns.despine(ax=ax)
-        fig.tight_layout()
-        pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
-        plt.close(fig)
-print(f'Saved {OUT_PDF_OVL}')
-
-# --- PDF 4: per-bin boxplots (mouse left, human right) ---
+# --- per-bin boxplots (mouse left, human right; independent y-axes) ---
 print(f'Writing {OUT_PDF_BOX} ({len(REGULONS)} pages)...')
 with PdfPages(OUT_PDF_BOX) as pdf:
     for r in REGULONS:
         panels = panels_for(r['name'])
         fig, axes = plt.subplots(1, len(panels), figsize=(5.0 * len(panels), 4.2),
-                                 squeeze=False, sharey=True)
+                                 squeeze=False)
         for ax, p in zip(axes[0], panels):
             positions, groups = binned_groups(p['pc1'], p['score'], N_PC1_BINS)
             draw_boxbins(ax, positions, groups, p['color'],
