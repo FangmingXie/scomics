@@ -54,7 +54,7 @@ OUT_PDF_BOX = os.path.join(OUT_FIG_DIR, '40.pc1_gene_expr_boxbins_mouse_human.pd
 
 # --- parameters ---
 MOUSE_SUBCLASS = 'L2/3'
-GENES          = ['Grm1', 'Kcnh5', 'Dscaml1', 'Ntng1']   # mouse symbols
+GENES          = ['Grm1', 'Kcnh5', 'Dscaml1', 'Ntng1', 'Cdh13', 'Robo1', 'Nfia']   # mouse symbols
 # Display-only PC1/PC2 sign flips, matching archetype figures 21.viz / 25.viz.
 MOUSE_PC1_SIGN = 1.0    # mouse FLIP = [1, -1] -> PC1 unchanged, PC2 flipped
 MOUSE_PC2_SIGN = -1.0
