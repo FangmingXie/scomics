@@ -1,18 +1,24 @@
 """Per-bin boxplots of regulon-target mean expression along PC1 — mouse Cheng22 & human Jorstad23 L2/3 IT.
 
+Variant of script 42: identical method, but the HUMAN regulon source is the wang25 L2/3 (V1+PFC)
+eRegulon table (`links/l23_evo/regulon_gene_table_wang25_l23_v1pfc.tsv`, script 45's human source)
+instead of the Wang25 SuppTable13 table (script 27) used in script 42. That raw table is long-format
+without a prebuilt `regulon` column, so it is derived inline as in script 38:
+  regulation_direction = TF2G_sign/R2G_sign ; regulon = TF_direction
+(direct + extended rows for the same TF/direction are unioned into one regulon's targets).
+
 For each selected regulon, the per-cell score is the MEAN across the regulon's activated (+/+)
 target genes of each gene's min-max-normalized expression (each gene scaled to [0, 1] using its
 0th–99th expression percentile BEFORE averaging, so highly-expressed genes don't dominate the
 mean). That score is shown as boxplots across 10 PC1 bins, mouse and human side by side (one
 regulon per page). Mouse and human panels use INDEPENDENT y-axes (not shared).
 
-Regulons are SPECIES-SPECIFIC (each species uses its own SCENIC+ regulon): mouse from yoo25,
-human from Wang25. Selected TFs = the 32 activating (+/+) regulons clearing (log2 OR>2.0 AND
-FDR<0.05 in >=1 archetype) in BOTH species in the script-44 mouse-vs-human enrichment
-comparison (its *_significant.html), in that mouse-driven order. Script 44's human panel uses
-the Wang25 SuppTable13 regulon table (script 27) — the same one used here — so all 32 regulons
-are present in both species' tables. Only +/+ (activated) targets are used. Target sets are
-intersected with each species' gene universe; coverage is printed (no fail-fast on targets).
+Regulons are SPECIES-SPECIFIC: mouse from yoo25, human from wang25 L2/3 (V1+PFC). Selected TFs =
+the 10 activating (+/+) regulons clearing (log2 OR>2.0 AND FDR<0.05 in >=1 archetype) in BOTH
+species in the script-45 mouse-vs-human enrichment comparison (its *_significant.html), in that
+mouse-driven order. Script 45's human panel uses this same V1+PFC table, so all 10 map cleanly
+(mouse yoo25 + human V1+PFC). Only +/+ (activated) targets are used. Target sets are intersected
+with each species' gene universe; coverage is printed (no fail-fast on targets).
 
 Expression (both species, log2(CP10k+1) as in scripts 21/40, then per-gene min-max [0,1]):
   - Mouse h5ad: raw counts in X       (subset Subclass == 'L2/3').
@@ -21,12 +27,12 @@ Expression (both species, log2(CP10k+1) as in scripts 21/40, then per-gene min-m
 Reads:
   local_data/res/l23_evo/21.mouse_pcha_xp.tsv
   local_data/res/l23_evo/25.human_pcha_xp.tsv
-  local_data/res/it/40.yoo25_L2_3_regulon_targets.tsv          (mouse regulons)
-  local_data/res/l23_evo/27.human_wang25_regulon_targets.tsv    (human regulons)
+  local_data/res/it/40.yoo25_L2_3_regulon_targets.tsv               (mouse regulons)
+  links/l23_evo/regulon_gene_table_wang25_l23_v1pfc.tsv             (human regulons, V1+PFC)
   links/l23_evo/cheng22_mouse_IT_P28.h5ad
   links/l23_evo/jorstad23_human_WithinArea_L23IT.h5ad
 Outputs:
-  local_data/fig/l23_evo/42.pc1_regulon_expr_boxbins_mouse_human.pdf
+  local_data/fig/l23_evo/46.pc1_regulon_expr_boxbins_mouse_human_wang25l23v1pfc.pdf
 """
 
 import os
@@ -45,51 +51,29 @@ OUT_FIG_DIR  = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'l23_evo')
 IN_MOUSE_XP  = os.path.join(OUT_RES_DIR, '21.mouse_pcha_xp.tsv')
 IN_HUMAN_XP  = os.path.join(OUT_RES_DIR, '25.human_pcha_xp.tsv')
 IN_MOUSE_REG = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '40.yoo25_L2_3_regulon_targets.tsv')
-IN_HUMAN_REG = os.path.join(OUT_RES_DIR, '27.human_wang25_regulon_targets.tsv')
+IN_HUMAN_REG = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'regulon_gene_table_wang25_l23_v1pfc.tsv')
 INPUT_MOUSE  = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'cheng22_mouse_IT_P28.h5ad')
 INPUT_HUMAN  = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'jorstad23_human_WithinArea_L23IT.h5ad')
-OUT_PDF_BOX  = os.path.join(OUT_FIG_DIR, '42.pc1_regulon_expr_boxbins_mouse_human.pdf')
+OUT_PDF_BOX  = os.path.join(OUT_FIG_DIR, '46.pc1_regulon_expr_boxbins_mouse_human_wang25l23v1pfc.pdf')
 
 # --- parameters ---
 MOUSE_SUBCLASS = 'L2/3'
 # Regulon selection: per-species regulon key in each species' regulon table (None = absent).
-# The 32 activating (+/+) regulons clearing (log2 OR>2.0 AND FDR<0.05 in >=1 archetype) in BOTH
-# species in the script-44 mouse-vs-human comparison (its *_significant.html), in that
-# mouse-driven order. Script 44's human source (Wang25 SuppTable13) is the same script-27 table
-# used here, so all 32 map cleanly (mouse yoo25 + human script-27).
+# The 10 activating (+/+) regulons clearing (log2 OR>2.0 AND FDR<0.05 in >=1 archetype) in BOTH
+# species in the script-45 mouse-vs-human comparison (its *_significant.html), in that
+# mouse-driven order. Script 45's human source (wang25 L2/3 V1+PFC) is the same table used here,
+# so all 10 map cleanly (mouse yoo25 + human V1+PFC).
 REGULONS = [
-    {'name': 'Nfib',   'mouse': 'Nfib_+/+',   'human': 'NFIB_+/+'},
     {'name': 'Rfx3',   'mouse': 'Rfx3_+/+',   'human': 'RFX3_+/+'},
     {'name': 'Meis2',  'mouse': 'Meis2_+/+',  'human': 'MEIS2_+/+'},
     {'name': 'Bcl11a', 'mouse': 'Bcl11a_+/+', 'human': 'BCL11A_+/+'},
-    {'name': 'Zbtb20', 'mouse': 'Zbtb20_+/+', 'human': 'ZBTB20_+/+'},
-    {'name': 'Pbx1',   'mouse': 'Pbx1_+/+',   'human': 'PBX1_+/+'},
-    {'name': 'Satb2',  'mouse': 'Satb2_+/+',  'human': 'SATB2_+/+'},
     {'name': 'Tcf4',   'mouse': 'Tcf4_+/+',   'human': 'TCF4_+/+'},
     {'name': 'Mef2c',  'mouse': 'Mef2c_+/+',  'human': 'MEF2C_+/+'},
-    {'name': 'Sox5',   'mouse': 'Sox5_+/+',   'human': 'SOX5_+/+'},
+    {'name': 'Hlf',    'mouse': 'Hlf_+/+',    'human': 'HLF_+/+'},
     {'name': 'Klf12',  'mouse': 'Klf12_+/+',  'human': 'KLF12_+/+'},
-    {'name': 'Pparg',  'mouse': 'Pparg_+/+',  'human': 'PPARG_+/+'},
-    {'name': 'Fosl2',  'mouse': 'Fosl2_+/+',  'human': 'FOSL2_+/+'},
-    {'name': 'Egr3',   'mouse': 'Egr3_+/+',   'human': 'EGR3_+/+'},
     {'name': 'Smad3',  'mouse': 'Smad3_+/+',  'human': 'SMAD3_+/+'},
-    {'name': 'Egr4',   'mouse': 'Egr4_+/+',   'human': 'EGR4_+/+'},
-    {'name': 'Etv1',   'mouse': 'Etv1_+/+',   'human': 'ETV1_+/+'},
-    {'name': 'Egr1',   'mouse': 'Egr1_+/+',   'human': 'EGR1_+/+'},
-    {'name': 'Arnt2',  'mouse': 'Arnt2_+/+',  'human': 'ARNT2_+/+'},
     {'name': 'Etv5',   'mouse': 'Etv5_+/+',   'human': 'ETV5_+/+'},
-    {'name': 'Mbnl2',  'mouse': 'Mbnl2_+/+',  'human': 'MBNL2_+/+'},
-    {'name': 'Irf2',   'mouse': 'Irf2_+/+',   'human': 'IRF2_+/+'},
-    {'name': 'Zeb1',   'mouse': 'Zeb1_+/+',   'human': 'ZEB1_+/+'},
-    {'name': 'Thrb',   'mouse': 'Thrb_+/+',   'human': 'THRB_+/+'},
-    {'name': 'Klf9',   'mouse': 'Klf9_+/+',   'human': 'KLF9_+/+'},
-    {'name': 'Bach2',  'mouse': 'Bach2_+/+',  'human': 'BACH2_+/+'},
-    {'name': 'Satb1',  'mouse': 'Satb1_+/+',  'human': 'SATB1_+/+'},
-    {'name': 'Cux1',   'mouse': 'Cux1_+/+',   'human': 'CUX1_+/+'},
     {'name': 'Rora',   'mouse': 'Rora_+/+',   'human': 'RORA_+/+'},
-    {'name': 'Pou3f2', 'mouse': 'Pou3f2_+/+', 'human': 'POU3F2_+/+'},
-    {'name': 'Etv6',   'mouse': 'Etv6_+/+',   'human': 'ETV6_+/+'},
-    {'name': 'Pou3f1', 'mouse': 'Pou3f1_+/+', 'human': 'POU3F1_+/+'},
 ]
 # Display-only PC1/PC2 sign flips, matching archetype figures 21.viz / 25.viz.
 MOUSE_PC1_SIGN = 1.0    # mouse FLIP = [1, -1] -> PC1 unchanged, PC2 flipped
@@ -209,7 +193,10 @@ human_pc2 = human_xp['PC2'].values * HUMAN_PC2_SIGN
 
 # --- regulon target sets (+/+ only), per species ---
 mreg = pd.read_csv(IN_MOUSE_REG, sep='\t')
+# human V1+PFC table is raw long-format: derive regulon/regulation_direction inline (script 38).
 hreg = pd.read_csv(IN_HUMAN_REG, sep='\t')
+hreg['regulation_direction'] = hreg['TF2G_sign'] + '/' + hreg['R2G_sign']
+hreg['regulon'] = hreg['TF'] + '_' + hreg['regulation_direction']
 
 
 def targets(df, key):
