@@ -7,8 +7,13 @@ it was selected in). Rows are grouped by that source bin.
 
 Columns: one pseudobulk per (sample, VX1 bin) over the same Arch1-4 NR + all-DR cells as
 the 45.v6 DEG pipeline. Expression = log1p(CP10k) of the summed raw counts, then z-scored
-PER GENE across all columns. Columns are grouped by bin, and within each bin ordered NR
-then DR by age (P28, P38, P28_dr, P38_dr). No clustering.
+PER GENE across all columns. Columns are grouped by condition (NR then DR), and within
+each condition ordered by VX1 bin (then age: P28, P38 for NR; P28_dr, P38_dr for DR). No
+clustering.
+
+Two panels share the rows and z-score scale: (A) the full per (sample × bin) matrix, and
+(B) a simpler summary = the mean z across samples for each condition × bin (2 × 4 = 8
+columns).
 
 Reads:
   links/astro/cheng22_astro.h5ad
@@ -26,6 +31,7 @@ import anndata as ad
 import scipy.sparse as sp
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.colors as mcolors
 import seaborn as sns
 from sklearn.linear_model import LinearRegression
 
@@ -168,21 +174,25 @@ ordered_samples = sorted(
     key=lambda s: (0 if cond_of_sample[s] == 'NR' else 1, AGE_ORDER[age_of_sample[s]], s),
 )
 
+# column order: condition (NR then DR) -> VX1 bin -> age/sample
+samples_by_cond = {c: [s for s in ordered_samples if cond_of_sample[s] == c]
+                   for c in ['NR', 'DR']}
 col_ids, col_sample, col_bin, col_cond = [], [], [], []
 expr_cols = []   # each: log1p(CP10k) over the selected genes
-for b in range(N_BINS):
-    for s in ordered_samples:
-        cmask = (sample_combined == s) & (bin_labels == b)
-        if int(cmask.sum()) < MIN_PB_CELLS:
-            continue
-        pb = raw_comb[cmask][:, row_gene_idx].sum(axis=0).astype(np.float64)
-        total = raw_comb[cmask].sum()                     # total counts over ALL genes
-        cp10k = pb / total * 1e4
-        expr_cols.append(np.log1p(cp10k))                 # ln(1 + CP10k)
-        col_ids.append(f'{s}|b{b + 1}')
-        col_sample.append(s)
-        col_bin.append(b)
-        col_cond.append(cond_of_sample[s])
+for cond in ['NR', 'DR']:
+    for b in range(N_BINS):
+        for s in samples_by_cond[cond]:
+            cmask = (sample_combined == s) & (bin_labels == b)
+            if int(cmask.sum()) < MIN_PB_CELLS:
+                continue
+            pb = raw_comb[cmask][:, row_gene_idx].sum(axis=0).astype(np.float64)
+            total = raw_comb[cmask].sum()                 # total counts over ALL genes
+            cp10k = pb / total * 1e4
+            expr_cols.append(np.log1p(cp10k))             # ln(1 + CP10k)
+            col_ids.append(f'{s}|b{b + 1}')
+            col_sample.append(s)
+            col_bin.append(b)
+            col_cond.append(cond)
 
 expr = np.vstack(expr_cols).T                             # genes x columns
 print(f'  Pseudobulk columns: {expr.shape[1]} (of max {N_BINS * len(ordered_samples)})')
@@ -196,49 +206,92 @@ if zero_var.any():
 sd[sd == 0] = 1.0
 z = (expr - mu) / sd
 
-data = pd.DataFrame(z, index=row_genes, columns=col_ids)
+# --- collapse to condition × bin means (mean z across samples): the simpler panel ---
+col_bin_arr, col_cond_arr = np.array(col_bin), np.array(col_cond)
+avg_cols, avg_bin, avg_cond, avg_labels = [], [], [], []
+for cond in ['NR', 'DR']:
+    for b in range(N_BINS):
+        sel = (col_cond_arr == cond) & (col_bin_arr == b)
+        if not sel.any():
+            continue
+        avg_cols.append(z[:, sel].mean(axis=1))
+        avg_bin.append(b)
+        avg_cond.append(cond)
+        avg_labels.append(f'{cond} b{b + 1}')
+zavg = np.vstack(avg_cols).T                              # genes x (condition × bin)
+print(f'  Averaged columns (condition × bin): {zavg.shape[1]}')
 
 # =============================================================================
-# Step 4 — heatmap (rows grouped by source bin, cols grouped by bin then NR/DR)
+# Step 4 — two-panel heatmap: (A) per sample × bin, (B) mean over samples per
+#          condition × bin. Shared rows (grouped by source bin) and z-score scale.
 # =============================================================================
 plt.rcParams['pdf.fonttype'] = 42
 bin_palette = sns.color_palette('Set2', N_BINS)
-bin_color   = {b: bin_palette[b] for b in range(N_BINS)}
-cond_color  = {'NR': COLOR_NR, 'DR': COLOR_DR}
+bin_rgb  = {b: tuple(bin_palette[b]) for b in range(N_BINS)}
+cond_rgb = {c: mcolors.to_rgb(col) for c, col in {'NR': COLOR_NR, 'DR': COLOR_DR}.items()}
 
-col_colors = pd.DataFrame({
-    'VX1 bin':   [bin_color[b] for b in col_bin],
-    'condition': [cond_color[c] for c in col_cond],
-}, index=col_ids)
-row_colors = pd.Series([bin_color[row_bin_of[g]] for g in row_genes],
-                       index=row_genes, name='VX1 bin')
+# column annotation strips (row 0 = condition, row 1 = VX1 bin)
+annA = np.stack([[cond_rgb[c] for c in col_cond], [bin_rgb[b] for b in col_bin]])
+annB = np.stack([[cond_rgb[c] for c in avg_cond], [bin_rgb[b] for b in avg_bin]])
+row_strip = np.array([[bin_rgb[row_bin_of[g]]] for g in row_genes])   # (nrows, 1, 3)
 
-g = sns.clustermap(
-    data, row_cluster=False, col_cluster=False,
-    cmap='RdBu_r', center=0, vmin=VMIN, vmax=VMAX,
-    col_colors=col_colors, row_colors=row_colors,
-    xticklabels=col_sample, yticklabels=True,
-    figsize=(0.22 * data.shape[1] + 6, 0.16 * data.shape[0] + 4),
-    cbar_kws={'label': 'z-score  log1p(CP10k)'},
-    dendrogram_ratio=(0.01, 0.01), colors_ratio=(0.012, 0.02),
-)
-g.ax_heatmap.set_xticklabels(g.ax_heatmap.get_xticklabels(), fontsize=6, rotation=90)
-g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_yticklabels(), fontsize=6)
-g.ax_heatmap.set_xlabel('sample (grouped by VX1 bin, then NR/DR by age)')
-g.ax_heatmap.set_ylabel('top DEGs (grouped by source VX1 bin)')
+nrows, nA, nB = len(row_genes), z.shape[1], zavg.shape[1]
+fig = plt.figure(figsize=(2.0 + 0.15 * nA + 0.35 * nB + 2.5, 0.17 * nrows + 1.8))
+gs = fig.add_gridspec(2, 6, width_ratios=[0.5, nA, 1.6, nB * 2.4, 0.8, 0.35],
+                      height_ratios=[1.5, nrows], hspace=0.02, wspace=0.06)
+
+axA_ann = fig.add_subplot(gs[0, 1])
+axB_ann = fig.add_subplot(gs[0, 3])
+ax_row  = fig.add_subplot(gs[1, 0])
+axA     = fig.add_subplot(gs[1, 1])
+axB     = fig.add_subplot(gs[1, 3])
+ax_cbar = fig.add_subplot(gs[1, 5])
+
+# column annotations
+for axn, ann in [(axA_ann, annA), (axB_ann, annB)]:
+    axn.imshow(ann, aspect='auto')
+    axn.set_xticks([])
+    axn.set_yticks([])
+axA_ann.set_yticks([0, 1])
+axA_ann.set_yticklabels(['condition', 'VX1 bin'], fontsize=7)
+axA_ann.tick_params(length=0)
+
+# row (gene) color strip + gene labels
+ax_row.imshow(row_strip, aspect='auto')
+ax_row.set_xticks([])
+ax_row.set_yticks(range(nrows))
+ax_row.set_yticklabels(row_genes, fontsize=5)
+ax_row.tick_params(length=0)
+ax_row.set_ylabel('top DEGs (grouped by source VX1 bin)', fontsize=8)
+
+# heatmaps
+im = axA.imshow(z, aspect='auto', cmap='RdBu_r', vmin=VMIN, vmax=VMAX)
+axA.set_yticks([])
+axA.set_xticks(range(nA))
+axA.set_xticklabels(col_sample, fontsize=5, rotation=90)
+axA.set_xlabel('sample (NR then DR, by VX1 bin)', fontsize=8)
+axA.set_title('per sample × bin', fontsize=9)
+
+axB.imshow(zavg, aspect='auto', cmap='RdBu_r', vmin=VMIN, vmax=VMAX)
+axB.set_yticks([])
+axB.set_xticks(range(nB))
+axB.set_xticklabels(avg_labels, fontsize=7, rotation=90)
+axB.set_xlabel('mean over samples', fontsize=8)
+axB.set_title('condition × bin mean', fontsize=9)
+
+fig.colorbar(im, cax=ax_cbar, label='z-score  log1p(CP10k)')
 
 # legends for the bin and condition color strips
-bin_handles  = [mpatches.Patch(color=bin_color[b], label=f'Bin {b + 1}') for b in range(N_BINS)]
-cond_handles = [mpatches.Patch(color=cond_color[c], label=c) for c in ['NR', 'DR']]
-leg1 = g.ax_heatmap.legend(handles=bin_handles, title='VX1 bin', frameon=False,
-                           loc='upper left', bbox_to_anchor=(1.06, 1.0), fontsize=7, title_fontsize=8)
-g.ax_heatmap.add_artist(leg1)
-g.ax_heatmap.legend(handles=cond_handles, title='condition', frameon=False,
-                    loc='upper left', bbox_to_anchor=(1.06, 0.80), fontsize=7, title_fontsize=8)
+bin_handles  = [mpatches.Patch(color=bin_rgb[b], label=f'Bin {b + 1}') for b in range(N_BINS)]
+cond_handles = [mpatches.Patch(color=cond_rgb[c], label=c) for c in ['NR', 'DR']]
+fig.legend(handles=bin_handles, title='VX1 bin', frameon=False,
+           loc='upper left', bbox_to_anchor=(0.99, 0.92), fontsize=7, title_fontsize=8)
+fig.legend(handles=cond_handles, title='condition', frameon=False,
+           loc='upper left', bbox_to_anchor=(0.99, 0.66), fontsize=7, title_fontsize=8)
 
-g.fig.suptitle(f'Top {TOP_N}/bin NR-vs-DR DEGs (FDR<{FDR_THRESH}, |log2FC|>log2(1.5)) '
-               f'× (sample × VX1 bin) pseudobulk, z-scored per gene', y=1.01, fontsize=11)
-g.savefig(OUT_PDF, bbox_inches='tight')
-plt.close(g.fig)
+fig.suptitle(f'Top {TOP_N}/bin NR-vs-DR DEGs (FDR<{FDR_THRESH}, |log2FC|>log2(1.5)) '
+             f'× VX1-bin pseudobulk, z-scored per gene', y=0.99, fontsize=11)
+fig.savefig(OUT_PDF, bbox_inches='tight')
+plt.close(fig)
 print(f'Saved {OUT_PDF}')
 print('Done.')
