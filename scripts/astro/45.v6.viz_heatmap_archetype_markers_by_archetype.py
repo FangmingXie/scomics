@@ -6,9 +6,11 @@ across VX1 bins. Rows are the top archetype-specific markers; columns are per
 diagonal (Arch-k markers high in the Arch-k columns).
 
 Rows: for each archetype, the TOP_N_ARCH one-vs-rest markers with the largest effect size
-(log2FC) from the P56 gao25 marker table (script 35), restricted to genes present in the
-cheng22 gene set and de-duplicated across archetypes (a gene keeps the lowest archetype it
-was selected for). Rows are grouped into four archetype
+(log2FC) from the cheng22 marker table (script 45.v6.cheng22_archetype_markers, computed on
+the same cells/labels), keeping significant enriched genes (FDR<0.05, log2FC>0), excluding
+technical gene classes (ribosomal, predicted Gm, mito, metallothionein), and de-duplicated
+across archetypes (a gene keeps the lowest archetype it was selected for). Rows are grouped
+into four archetype
 blocks (Arch1..Arch4); within each block they are ordered by hierarchical clustering (ward,
 optimal leaf ordering) of the z-scored per (sample × archetype) profiles.
 
@@ -25,12 +27,13 @@ Reads:
   links/astro/cheng22_astro.h5ad
   local_data/res/astro/41.v3.cheng22_nr_harmony_arch1234.h5ad
   local_data/res/astro/26.combined_labels.parquet
-  local_data/res/astro/35.archetype_markers.tsv
+  local_data/res/astro/45.v6.cheng22_archetype_markers.tsv
 Outputs:
   local_data/fig/astro/45.v6.heatmap_archetype_markers_by_archetype_pseudobulk.pdf
 """
 
 import os
+import re
 import sys
 import numpy as np
 import pandas as pd
@@ -48,7 +51,10 @@ sys.path.insert(0, os.path.join(PROJECT_ROOT, 'scripts'))
 INPUT_H5AD         = os.path.join(PROJECT_ROOT, 'links', 'astro', 'cheng22_astro.h5ad')
 IN_NR_H5AD         = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro', '41.v3.cheng22_nr_harmony_arch1234.h5ad')
 IN_COMBINED_LABELS = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro', '26.combined_labels.parquet')
-MARKERS_TSV        = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro', '35.archetype_markers.tsv')
+MARKERS_TSV        = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'astro', '45.v6.cheng22_archetype_markers.tsv')
+
+# technical gene classes excluded from marker selection (ribosomal, predicted Gm, mito, metallothionein)
+TECH_GENE_RE = re.compile(r'^(Rpl|Rps|Rplp|Mrpl|Mrps|Gm\d|mt-|Mt\d)')
 FIG_DIR            = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'astro')
 OUT_PDF            = os.path.join(FIG_DIR, '45.v6.heatmap_archetype_markers_by_archetype_pseudobulk.pdf')
 
@@ -130,10 +136,11 @@ raw_comb = raw_counts[combined_idx]
 
 # =============================================================================
 # Step 2 — select rows: top TOP_N_ARCH enriched markers per archetype ranked by
-#          effect size (log2FC); present in cheng22, de-duplicated
+#          effect size (log2FC); significant, non-technical, present, de-duplicated
 # =============================================================================
 markers = pd.read_csv(MARKERS_TSV, sep='\t')
-markers = markers[markers['log2FC'] > 0]                  # enriched (one-vs-rest up)
+markers = markers[(markers['log2FC'] > 0) & markers['fdr'].notna() & (markers['fdr'] < 0.05)]
+markers = markers[~markers['gene'].str.match(TECH_GENE_RE)]   # drop ribosomal/Gm/mito/metallothionein
 present = set(gene_names)
 row_arch_of, selected, row_genes = {}, set(), []
 for a in range(1, N_ARCH + 1):
@@ -306,8 +313,8 @@ fig.legend(handles=arch_handles, title='archetype', frameon=False,
 fig.legend(handles=cond_handles, title='condition (col)', frameon=False,
            loc='upper left', bbox_to_anchor=(0.99, 0.66), fontsize=7, title_fontsize=8)
 
-fig.suptitle(f'Top {TOP_N_ARCH} archetype markers/archetype by effect size (log2FC) '
-             f'(1-vs-rest, table 35) × sample-archetype pseudobulk, z-scored per gene',
+fig.suptitle(f'Top {TOP_N_ARCH} archetype markers/archetype by log2FC '
+             f'(cheng22 1-vs-rest, tech-filtered) × sample-archetype pseudobulk, z-scored per gene',
              y=0.99, fontsize=11)
 fig.savefig(OUT_PDF, bbox_inches='tight')
 plt.close(fig)
