@@ -5,10 +5,10 @@ across VX1 bins. Rows are the top archetype-specific markers; columns are per
 (sample × archetype) pseudobulks, so archetype-identity genes should light up on the
 diagonal (Arch-k markers high in the Arch-k columns).
 
-Rows: for each archetype, the TOP_N_ARCH enriched (log2FC > 0) one-vs-rest markers with
-the highest specificity (frac_in - frac_out) from the P56 gao25 marker table (script 35),
-restricted to genes present in the cheng22 gene set and de-duplicated across archetypes (a
-gene keeps the lowest archetype it was selected for). Rows are grouped into four archetype
+Rows: for each archetype, the TOP_N_ARCH one-vs-rest markers with the largest effect size
+(log2FC) from the P56 gao25 marker table (script 35), restricted to genes present in the
+cheng22 gene set and de-duplicated across archetypes (a gene keeps the lowest archetype it
+was selected for). Rows are grouped into four archetype
 blocks (Arch1..Arch4); within each block they are ordered by hierarchical clustering (ward,
 optimal leaf ordering) of the z-scored per (sample × archetype) profiles.
 
@@ -130,15 +130,14 @@ raw_comb = raw_counts[combined_idx]
 
 # =============================================================================
 # Step 2 — select rows: top TOP_N_ARCH enriched markers per archetype ranked by
-#          specificity (frac_in - frac_out); present in cheng22, de-duplicated
+#          effect size (log2FC); present in cheng22, de-duplicated
 # =============================================================================
 markers = pd.read_csv(MARKERS_TSV, sep='\t')
-markers = markers[markers['log2FC'] > 0].copy()           # enriched (one-vs-rest up)
-markers['specificity'] = markers['frac_in'] - markers['frac_out']
+markers = markers[markers['log2FC'] > 0]                  # enriched (one-vs-rest up)
 present = set(gene_names)
 row_arch_of, selected, row_genes = {}, set(), []
 for a in range(1, N_ARCH + 1):
-    sub = markers[markers['archetype'] == f'archetype_{a}'].sort_values('specificity', ascending=False)
+    sub = markers[markers['archetype'] == f'archetype_{a}'].sort_values('log2FC', ascending=False)
     taken = []
     for g in sub['gene']:
         if g in present and g not in selected:
@@ -307,7 +306,7 @@ fig.legend(handles=arch_handles, title='archetype', frameon=False,
 fig.legend(handles=cond_handles, title='condition (col)', frameon=False,
            loc='upper left', bbox_to_anchor=(0.99, 0.66), fontsize=7, title_fontsize=8)
 
-fig.suptitle(f'Top {TOP_N_ARCH} archetype markers/archetype by specificity '
+fig.suptitle(f'Top {TOP_N_ARCH} archetype markers/archetype by effect size (log2FC) '
              f'(1-vs-rest, table 35) × sample-archetype pseudobulk, z-scored per gene',
              y=0.99, fontsize=11)
 fig.savefig(OUT_PDF, bbox_inches='tight')
