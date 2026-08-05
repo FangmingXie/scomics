@@ -90,6 +90,7 @@ REGULONS = [
     {'name': 'Pou3f2', 'mouse': 'Pou3f2_+/+', 'human': 'POU3F2_+/+'},
     {'name': 'Etv6',   'mouse': 'Etv6_+/+',   'human': 'ETV6_+/+'},
     {'name': 'Pou3f1', 'mouse': 'Pou3f1_+/+', 'human': 'POU3F1_+/+'},
+    {'name': 'Jdp2',   'mouse': 'Jdp2_+/+',   'human': 'JDP2_+/+'},   # AP-1; present in both tables
 ]
 # Display-only PC1/PC2 sign flips, matching archetype figures 21.viz / 25.viz.
 MOUSE_PC1_SIGN = 1.0    # mouse FLIP = [1, -1] -> PC1 unchanged, PC2 flipped
