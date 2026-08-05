@@ -6,7 +6,9 @@ placed immediately AFTER its matched normal age, e.g. P12, P12DR, P14, P14DR, ..
 color = that regulon's activity at that age, normalized PER ROW by its own MAX (each
 regulon divided by its peak across ages, so max->1 and the min stays at its true
 fraction of the peak) so each regulon's temporal SHAPE is comparable while keeping the
-baseline meaningful; the raw activity is retained in the TSV.
+baseline meaningful; the raw activity is retained in the TSV. Rows are ordered by
+hierarchical clustering (correlation distance, average linkage) of the max-normalized
+profiles, so regulons with similar temporal patterns sit adjacent.
 
 Activity pipeline is identical to script 46 (pseudobulk-by-Age, NOT per-cell):
   1. Subset to L2/3 (Subclass == 'L2/3').
@@ -33,6 +35,7 @@ import re
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+from scipy.cluster.hierarchy import linkage, leaves_list
 import anndata as ad
 
 import matplotlib
@@ -60,6 +63,8 @@ KEEP_SUBCLASS = 'L2/3'
 AGE_COL      = 'Age'
 CP_TARGET    = 1e6             # CPM
 CMAP         = 'RdBu_r'        # per-row [0,1] color: blue (low) -> red (high)
+CLUSTER_METRIC = 'correlation'  # row distance for hierarchical clustering (temporal shape)
+CLUSTER_METHOD = 'average'      # linkage method
 
 OUT_PDF = os.path.join(OUT_FIG_DIR, '47.yoo25_l23_regulon_target_activity_heatmap.pdf')
 OUT_TSV = os.path.join(OUT_RES_DIR, '47.yoo25_l23_regulon_target_activity_heatmap.tsv')
@@ -159,25 +164,34 @@ def main():
     rmax = act_mat.max(axis=1, keepdims=True)
     act_norm = np.where(rmax > 0, act_mat / np.where(rmax > 0, rmax, 1.0), 0.0)
 
-    for i, tf in enumerate(SELECTED_REGULONS):
+    # --- hierarchical clustering of rows on the max-normalized profiles (temporal shape) ---
+    Z = linkage(act_norm, method=CLUSTER_METHOD, metric=CLUSTER_METRIC)
+    row_order = leaves_list(Z)
+    row_labels = [SELECTED_REGULONS[i] for i in row_order]
+    act_mat = act_mat[row_order, :]
+    act_norm = act_norm[row_order, :]
+    print(f'Row order ({CLUSTER_METHOD}/{CLUSTER_METRIC} clustering): {row_labels}')
+
+    for i, tf in enumerate(row_labels):
         used = [g for g in sorted(tf_targets[tf]) if g in name2idx]
         for j, a in enumerate(ordered_ages):
             day, cond = age_info[a]
-            rows.append(dict(regulon=tf, n_targets_total=len(tf_targets[tf]), n_targets_used=len(used),
+            rows.append(dict(regulon=tf, row=i, n_targets_total=len(tf_targets[tf]),
+                             n_targets_used=len(used),
                              age=a, day=day, condition=cond, n_cells=n_cells[a],
                              activity=float(act_mat[i, j]),
                              activity_rowmaxnorm=float(act_norm[i, j])))
 
-    # --- heatmap: regulons (rows) x ages (cols), per-row max-normalized color ---
+    # --- heatmap: regulons (rows, clustered order) x ages (cols), per-row max-normalized ---
     ncols = len(ordered_ages)
-    nrows = len(SELECTED_REGULONS)
+    nrows = len(row_labels)
     fig, ax = plt.subplots(figsize=(0.62 * ncols + 2.2, 0.42 * nrows + 1.6))
     im = ax.imshow(act_norm, aspect='auto', cmap=CMAP, vmin=0.0, vmax=1.0)
 
     ax.set_xticks(np.arange(ncols))
     ax.set_xticklabels(ordered_ages, rotation=45, ha='right', fontsize=8)
     ax.set_yticks(np.arange(nrows))
-    ax.set_yticklabels(SELECTED_REGULONS, fontsize=9)
+    ax.set_yticklabels(row_labels, fontsize=9)
     ax.set_xlabel('postnatal stage (age)')
     ax.set_ylabel('regulon')
 
