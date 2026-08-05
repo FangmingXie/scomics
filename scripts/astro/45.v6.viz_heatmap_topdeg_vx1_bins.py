@@ -3,8 +3,9 @@
 Rows: the union of all genes that are significant up-regulated (log2FC > +LOG2FC_THRESH)
 or down-regulated (log2FC < -LOG2FC_THRESH) NR-vs-DR DEGs (FDR < FDR_THRESH) in ANY VX1
 bin, from the 45.v6 DESeq2 tables. Genes are organized in two blocks — up-regulated (up
-in DR) then down-regulated (up in NR) — each ordered by best (smallest) FDR across bins;
-a gene's direction is taken from the bin where it is most significant. NOT grouped by bin.
+in DR) then down-regulated (up in NR); a gene's direction is taken from the bin where it
+is most significant. Within each block, rows are ordered by hierarchical clustering (ward
+linkage, optimal leaf ordering) of the z-scored per (sample × bin) profiles. NOT by bin.
 
 Columns: one pseudobulk per (sample, VX1 bin) over the same Arch1-4 NR + all-DR cells as
 the 45.v6 DEG pipeline. Expression = log1p(CP10k) of the summed raw counts, then z-scored
@@ -30,6 +31,7 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 import scipy.sparse as sp
+from scipy.cluster.hierarchy import linkage, leaves_list
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.colors as mcolors
@@ -56,7 +58,8 @@ MIN_PB_CELLS  = 10             # drop a (sample x bin) pseudobulk with fewer cel
 
 # --- row (gene) selection thresholds (stringent union across bins) ---
 FDR_THRESH    = 0.05
-LOG2FC_THRESH = 2.0            # up = log2FC > +2, down = log2FC < -2
+LOG2FC_THRESH = np.log2(3)     # up = log2FC > +log2(3), down = log2FC < -log2(3)
+LOG2FC_LABEL  = 'log2(3)'      # for figure text
 
 # --- column ordering: NR ages first, then DR ages ---
 AGE_ORDER = {'P28': 0, 'P38': 1, 'P28_dr': 2, 'P38_dr': 3}
@@ -154,11 +157,13 @@ for b in range(N_BINS):
     print(f'  Bin {b + 1}: {len(sig)} significant '
           f'(up={int((sig["log2FC"] > 0).sum())}, down={int((sig["log2FC"] < 0).sum())})')
 
-# organize: up-regulated block then down-regulated block, each ordered by best FDR
+# organize: up-regulated block then down-regulated block (within-block order set by
+# hierarchical clustering of the z-profiles below, in Step 3)
 up_genes = sorted([g for g in gene_dir if gene_dir[g] == 'up'], key=lambda g: gene_fdr[g])
 dn_genes = sorted([g for g in gene_dir if gene_dir[g] == 'dn'], key=lambda g: gene_fdr[g])
 row_genes  = up_genes + dn_genes
 row_dir_of = gene_dir
+n_up = len(up_genes)
 print(f'  Union DEG rows: {len(row_genes)} ({len(up_genes)} up, {len(dn_genes)} down)')
 
 gene_col_of = {g: np.where(gene_names == g)[0][0] for g in row_genes}
@@ -207,6 +212,21 @@ if zero_var.any():
     print(f'  WARNING: {int(zero_var.sum())} genes have zero variance across columns -> set to 0')
 sd[sd == 0] = 1.0
 z = (expr - mu) / sd
+
+# --- order rows within each direction block by hierarchical clustering of z-profiles ---
+def cluster_leaf_order(mat):
+    """Ward-linkage leaf order (optimal ordering) of the rows of `mat`; identity if < 3."""
+    if mat.shape[0] < 3:
+        return np.arange(mat.shape[0])
+    return leaves_list(linkage(mat, method='ward', optimal_ordering=True))
+
+
+up_slice, dn_slice = np.arange(n_up), np.arange(n_up, len(row_genes))
+row_order = np.concatenate([up_slice[cluster_leaf_order(z[up_slice])],
+                            dn_slice[cluster_leaf_order(z[dn_slice])]])
+z = z[row_order]
+row_genes = [row_genes[i] for i in row_order]
+print('  Rows ordered by ward hierarchical clustering within up/down blocks')
 
 # --- collapse to condition × bin means (mean z across samples): the simpler panel ---
 col_bin_arr, col_cond_arr = np.array(col_bin), np.array(col_cond)
@@ -275,6 +295,11 @@ axA.set_xticklabels(col_sample, fontsize=5, rotation=90)
 axA.set_xlabel('sample (NR then DR, by VX1 bin)', fontsize=8)
 axA.set_title('per sample × bin', fontsize=9)
 
+# thin vertical lines at each (condition, bin) group boundary
+for i in range(1, nA):
+    if col_bin[i] != col_bin[i - 1] or col_cond[i] != col_cond[i - 1]:
+        axA.axvline(i - 0.5, color='black', lw=0.5)
+
 axB.imshow(zavg, aspect='auto', cmap='RdBu_r', vmin=VMIN, vmax=VMAX)
 axB.set_yticks([])
 axB.set_xticks(range(nB))
@@ -296,7 +321,7 @@ fig.legend(handles=cond_handles, title='condition (col)', frameon=False,
 fig.legend(handles=dir_handles, title='DEG direction (row)', frameon=False,
            loc='upper left', bbox_to_anchor=(0.99, 0.50), fontsize=7, title_fontsize=8)
 
-fig.suptitle(f'Union up/down NR-vs-DR DEGs (FDR<{FDR_THRESH}, |log2FC|>{LOG2FC_THRESH:g}) '
+fig.suptitle(f'Union up/down NR-vs-DR DEGs (FDR<{FDR_THRESH}, |log2FC|>{LOG2FC_LABEL}) '
              f'× VX1-bin pseudobulk, z-scored per gene', y=0.99, fontsize=11)
 fig.savefig(OUT_PDF, bbox_inches='tight')
 plt.close(fig)
