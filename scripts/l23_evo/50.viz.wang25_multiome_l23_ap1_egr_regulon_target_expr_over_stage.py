@@ -3,7 +3,7 @@ Two-panel version of script 49: regulon-target activity over developmental stage
 excitatory neurons (EN-L2_3-IT) of the Wang25 developing-human-cortex 10x multiome GEX
 dataset (V1), with related TFs overlaid as separate lines in one panel.
 
-  - Panel 1 (AP-1):  FOS, FOSL2, JUN, JUNB
+  - Panel 1 (AP-1):  FOS, FOSL2, JUN, JUNB, JUND
   - Panel 2 (EGR):   EGR1, EGR2, EGR3, EGR4
 
 For each TF, the per-cell regulon score uses the activating (+/+) SCENIC+ eRegulon from the
@@ -49,12 +49,12 @@ OUT_RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'l23_evo')
 
 # Panels: (label, list of TFs shown as separate lines).
 PANELS = [
-    ('AP-1', ['FOS', 'FOSL2', 'JUN', 'JUNB']),
+    ('AP-1', ['FOS', 'FOSL2', 'JUN', 'JUNB', 'JUND']),
     ('EGR',  ['EGR1', 'EGR2', 'EGR3', 'EGR4']),
 ]
-# Per-line colors/markers (up to 4 lines per panel).
-LINE_COLORS  = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
-LINE_MARKERS = ['o', 's', '^', 'D']
+# Per-line colors/markers (up to 5 lines per panel).
+LINE_COLORS  = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+LINE_MARKERS = ['o', 's', '^', 'D', 'v']
 
 DIRECTION = '+/+'              # activating regulons only (matches scripts 42/44/49)
 KEEP_TYPE = 'EN-L2_3-IT'       # L2/3 excitatory neurons
@@ -150,10 +150,11 @@ def main():
     name2idx = {g: i for i, g in enumerate(adata.var_names)}
 
     xpos = np.arange(len(stages))
-    fig, axes = plt.subplots(1, len(PANELS), figsize=(4.6 * len(PANELS), 3.8), squeeze=False)
+    fig, axes = plt.subplots(1, len(PANELS), figsize=(4.6 * len(PANELS), 3.8),
+                             squeeze=False, sharey=True)
 
     all_stats = []
-    for ax, (label, tfs) in zip(axes[0], PANELS):
+    for col, (ax, (label, tfs)) in enumerate(zip(axes[0], PANELS)):
         for i, tf in enumerate(tfs):
             res = regulon_stage_stats(tf, tf_targets, X, depth, stage, stages, name2idx)
             if res is None:
@@ -174,7 +175,8 @@ def main():
                            rotation=45, ha='right', fontsize=8)
         ax.set_xlim(-0.4, len(stages) - 0.6)
         ax.set_xlabel('Developmental stage')
-        ax.set_ylabel('regulon target activity\n(per-gene [0,1] mean, minmax norm.)', fontsize=8)
+        if col == 0:
+            ax.set_ylabel('regulon target activity\n(per-gene [0,1] mean, minmax norm.)', fontsize=8)
         ax.set_title(f'{label} regulons', fontsize=11)
         ax.legend(fontsize=8, frameon=False, title='TF (n targets)', title_fontsize=8)
         ax.spines['top'].set_visible(False)
