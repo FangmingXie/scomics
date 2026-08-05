@@ -1,9 +1,10 @@
 """Heatmap of top NR-vs-DR DEGs (rows) × per (sample × VX1 bin) pseudobulks (cols).
 
-Rows: for each of the 4 VX1 bins, the top TOP_N significant DEGs by FDR (both
-directions; significant = FDR < FDR_THRESH & |log2FC_shrink| > LOG2FC_THRESH) from the
-45.v6 DESeq2 tables, unioned across bins and de-duplicated (a gene keeps the lowest bin
-it was selected in). Rows are grouped by that source bin.
+Rows: the union of all genes that are significant up-regulated (log2FC > +LOG2FC_THRESH)
+or down-regulated (log2FC < -LOG2FC_THRESH) NR-vs-DR DEGs (FDR < FDR_THRESH) in ANY VX1
+bin, from the 45.v6 DESeq2 tables. Genes are organized in two blocks — up-regulated (up
+in DR) then down-regulated (up in NR) — each ordered by best (smallest) FDR across bins;
+a gene's direction is taken from the bin where it is most significant. NOT grouped by bin.
 
 Columns: one pseudobulk per (sample, VX1 bin) over the same Arch1-4 NR + all-DR cells as
 the 45.v6 DEG pipeline. Expression = log1p(CP10k) of the summed raw counts, then z-scored
@@ -53,10 +54,9 @@ MIN_CELLS     = 50
 N_BINS        = 4
 MIN_PB_CELLS  = 10             # drop a (sample x bin) pseudobulk with fewer cells (matches DEG)
 
-# --- row (gene) selection thresholds ---
-TOP_N         = 20             # top DEGs per bin (by FDR), both directions
+# --- row (gene) selection thresholds (stringent union across bins) ---
 FDR_THRESH    = 0.05
-LOG2FC_THRESH = np.log2(1.5)
+LOG2FC_THRESH = 2.0            # up = log2FC > +2, down = log2FC < -2
 
 # --- column ordering: NR ages first, then DR ages ---
 AGE_ORDER = {'P28': 0, 'P38': 1, 'P28_dr': 2, 'P38_dr': 3}
@@ -137,27 +137,29 @@ for sample in np.unique(sample_combined):
 raw_comb = raw_counts[combined_idx]
 
 # =============================================================================
-# Step 2 — select rows: top TOP_N significant DEGs by FDR per bin (union, dedup)
+# Step 2 — select rows: union of all genes significant (FDR < FDR_THRESH,
+#          |log2FC| > LOG2FC_THRESH) in ANY bin; direction from the most
+#          significant qualifying bin. Organize up- then down-regulated.
 # =============================================================================
-gene_to_bin = {}   # gene -> source bin (lowest bin it was selected in), preserves order
+gene_dir = {}   # gene -> 'up' (up in DR) or 'dn' (up in NR)
+gene_fdr = {}   # gene -> smallest qualifying FDR across bins (for ordering)
 for b in range(N_BINS):
     deg = pd.read_csv(DEG_ALL_TMPL.format(b=b + 1), sep='\t')
     sig = deg[(deg['fdr'] < FDR_THRESH) & (deg['fdr'].notna())
               & (deg['log2FC'].abs() > LOG2FC_THRESH)]
-    top = sig.nsmallest(TOP_N, 'fdr')
-    for g in top['gene']:
-        if g not in gene_to_bin:          # keep the lowest bin; group rows by it
-            gene_to_bin[g] = b
-    print(f'  Bin {b + 1}: {len(sig)} significant, took top {len(top)}')
+    for g, lfc, fdr in zip(sig['gene'], sig['log2FC'], sig['fdr']):
+        if g not in gene_fdr or fdr < gene_fdr[g]:
+            gene_fdr[g] = fdr
+            gene_dir[g] = 'up' if lfc > 0 else 'dn'
+    print(f'  Bin {b + 1}: {len(sig)} significant '
+          f'(up={int((sig["log2FC"] > 0).sum())}, down={int((sig["log2FC"] < 0).sum())})')
 
-# order rows by source bin, then by FDR within that source bin
-row_bin_of = dict(gene_to_bin)
-row_genes = []
-for b in range(N_BINS):
-    deg = pd.read_csv(DEG_ALL_TMPL.format(b=b + 1), sep='\t').set_index('gene')
-    genes_b = [g for g, bb in row_bin_of.items() if bb == b]
-    row_genes.extend(sorted(genes_b, key=lambda g: deg.loc[g, 'fdr']))
-print(f'  Total unique DEG rows: {len(row_genes)}')
+# organize: up-regulated block then down-regulated block, each ordered by best FDR
+up_genes = sorted([g for g in gene_dir if gene_dir[g] == 'up'], key=lambda g: gene_fdr[g])
+dn_genes = sorted([g for g in gene_dir if gene_dir[g] == 'dn'], key=lambda g: gene_fdr[g])
+row_genes  = up_genes + dn_genes
+row_dir_of = gene_dir
+print(f'  Union DEG rows: {len(row_genes)} ({len(up_genes)} up, {len(dn_genes)} down)')
 
 gene_col_of = {g: np.where(gene_names == g)[0][0] for g in row_genes}
 assert all(g in gene_col_of for g in row_genes), 'selected DEG missing from gene_names'
@@ -229,11 +231,12 @@ plt.rcParams['pdf.fonttype'] = 42
 bin_palette = sns.color_palette('Set2', N_BINS)
 bin_rgb  = {b: tuple(bin_palette[b]) for b in range(N_BINS)}
 cond_rgb = {c: mcolors.to_rgb(col) for c, col in {'NR': COLOR_NR, 'DR': COLOR_DR}.items()}
+dir_rgb  = {'up': mcolors.to_rgb(COLOR_DR), 'dn': mcolors.to_rgb(COLOR_NR)}  # up in DR / up in NR
 
 # column annotation strips (row 0 = condition, row 1 = VX1 bin)
 annA = np.stack([[cond_rgb[c] for c in col_cond], [bin_rgb[b] for b in col_bin]])
 annB = np.stack([[cond_rgb[c] for c in avg_cond], [bin_rgb[b] for b in avg_bin]])
-row_strip = np.array([[bin_rgb[row_bin_of[g]]] for g in row_genes])   # (nrows, 1, 3)
+row_strip = np.array([[dir_rgb[row_dir_of[g]]] for g in row_genes])   # (nrows, 1, 3)
 
 nrows, nA, nB = len(row_genes), z.shape[1], zavg.shape[1]
 fig = plt.figure(figsize=(2.0 + 0.15 * nA + 0.35 * nB + 2.5, 0.17 * nrows + 1.8))
@@ -262,7 +265,7 @@ ax_row.set_xticks([])
 ax_row.set_yticks(range(nrows))
 ax_row.set_yticklabels(row_genes, fontsize=5)
 ax_row.tick_params(length=0)
-ax_row.set_ylabel('top DEGs (grouped by source VX1 bin)', fontsize=8)
+ax_row.set_ylabel('union DEGs (up-regulated then down-regulated)', fontsize=8)
 
 # heatmaps
 im = axA.imshow(z, aspect='auto', cmap='RdBu_r', vmin=VMIN, vmax=VMAX)
@@ -281,15 +284,19 @@ axB.set_title('condition × bin mean', fontsize=9)
 
 fig.colorbar(im, cax=ax_cbar, label='z-score  log1p(CP10k)')
 
-# legends for the bin and condition color strips
+# legends: column bin & condition strips + row direction strip
 bin_handles  = [mpatches.Patch(color=bin_rgb[b], label=f'Bin {b + 1}') for b in range(N_BINS)]
 cond_handles = [mpatches.Patch(color=cond_rgb[c], label=c) for c in ['NR', 'DR']]
-fig.legend(handles=bin_handles, title='VX1 bin', frameon=False,
+dir_handles  = [mpatches.Patch(color=dir_rgb['up'], label='up in DR'),
+                mpatches.Patch(color=dir_rgb['dn'], label='up in NR')]
+fig.legend(handles=bin_handles, title='VX1 bin (col)', frameon=False,
            loc='upper left', bbox_to_anchor=(0.99, 0.92), fontsize=7, title_fontsize=8)
-fig.legend(handles=cond_handles, title='condition', frameon=False,
-           loc='upper left', bbox_to_anchor=(0.99, 0.66), fontsize=7, title_fontsize=8)
+fig.legend(handles=cond_handles, title='condition (col)', frameon=False,
+           loc='upper left', bbox_to_anchor=(0.99, 0.68), fontsize=7, title_fontsize=8)
+fig.legend(handles=dir_handles, title='DEG direction (row)', frameon=False,
+           loc='upper left', bbox_to_anchor=(0.99, 0.50), fontsize=7, title_fontsize=8)
 
-fig.suptitle(f'Top {TOP_N}/bin NR-vs-DR DEGs (FDR<{FDR_THRESH}, |log2FC|>log2(1.5)) '
+fig.suptitle(f'Union up/down NR-vs-DR DEGs (FDR<{FDR_THRESH}, |log2FC|>{LOG2FC_THRESH:g}) '
              f'× VX1-bin pseudobulk, z-scored per gene', y=0.99, fontsize=11)
 fig.savefig(OUT_PDF, bbox_inches='tight')
 plt.close(fig)
