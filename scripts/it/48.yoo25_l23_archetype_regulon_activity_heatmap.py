@@ -26,7 +26,7 @@ Pipeline:
      gene to [0,1] jointly across the 6 columns; activity per regulon = mean over targets present.
   7. Per-row max-normalize (each regulon / its own max across the 6 cols); hierarchically cluster
      rows (correlation distance, average linkage) for row order.
-  8. rocket_r heatmap (regulon rows x 6 cols), P21|P21DR divider, two-line column labels.
+  8. RdBu_r heatmap (regulon rows x 6 cols), P21|P21DR divider, two-line column labels.
 
 Reads:
   links/it/superdupermegaRNA_yoo25_IT_AllAges.h5ad
@@ -49,7 +49,6 @@ import anndata as ad
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import seaborn as sns  # registers the 'rocket'/'rocket_r' colormaps with matplotlib
 
 plt.rcParams['pdf.fonttype'] = 42     # editable vector text in PDF
 plt.rcParams['svg.fonttype'] = 'none'  # editable vector text in SVG
@@ -85,7 +84,7 @@ N_TOP_CELLS  = 300             # top cells (by archetype score) per (age, archet
 SCORE_PCTILE = (2, 98)         # per-gene percentile clip for scoring (script 34)
 CP10K        = 1e4             # CP10k target for log2 scoring expression
 CP_TARGET    = 1e6             # CPM for pseudobulk activity
-CMAP         = 'rocket_r'      # per-row [0,1] color (seaborn rocket, reversed): light -> dark
+CMAP         = 'RdBu_r'        # per-row [0,1] color: blue (low) -> red (high)
 CLUSTER_METRIC = 'correlation'  # row distance for hierarchical clustering
 CLUSTER_METHOD = 'average'      # linkage method
 
