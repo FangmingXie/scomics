@@ -274,8 +274,8 @@ def main():
     ax.grid(which='minor', color='white', linewidth=0.5)
     ax.tick_params(which='minor', length=0)
 
-    # bold white divider between the P21 and P21DR triplets
-    ax.axvline(len(ARCHETYPES) - 0.5, color='white', linewidth=3.0)
+    # thin black divider between the P21 and P21DR triplets
+    ax.axvline(len(ARCHETYPES) - 0.5, color='black', linewidth=1.2)
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.045, pad=0.02)
     cbar.set_label('regulon activity\n(per-row max-normalized)', fontsize=8)

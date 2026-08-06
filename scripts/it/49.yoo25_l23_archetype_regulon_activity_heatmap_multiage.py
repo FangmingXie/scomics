@@ -30,8 +30,8 @@ Pipeline:
      gene to [0,1] jointly across ALL columns; activity per regulon = mean over targets present.
   7. Per-row max-normalize (each regulon / its own max across all cols); hierarchically cluster
      rows (correlation distance, average linkage) for row order.
-  8. RdBu_r heatmap (regulon rows x 18 cols), two-line column labels, per-age dividers (thin
-     within a normal/DR pair, bold between developmental days).
+  8. RdBu_r heatmap (regulon rows x 18 cols), two-line column labels, thin black per-age
+     dividers (lighter within a normal/DR pair, heavier between developmental days).
 
 Reads:
   links/it/superdupermegaRNA_yoo25_IT_AllAges.h5ad
@@ -283,11 +283,11 @@ def main():
     ax.grid(which='minor', color='white', linewidth=0.5)
     ax.tick_params(which='minor', length=0)
 
-    # per-age dividers: thin between a normal age and its DR pair, bold between days
+    # per-age dividers (thin black): lighter within a normal/DR pair, heavier between days
     for bi in range(len(AGES) - 1):
         x = (bi + 1) * n_arch - 0.5
         within_pair = AGES[bi + 1] == AGES[bi] + 'DR'
-        ax.axvline(x, color='white', linewidth=1.5 if within_pair else 3.0)
+        ax.axvline(x, color='black', linewidth=1.0 if within_pair else 1.6)
 
     cbar = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
     cbar.set_label('regulon activity\n(per-row max-normalized)', fontsize=8)
