@@ -3,8 +3,8 @@
 Simplified variant of script 48: same (age, archetype) pseudobulk pipeline, but a smaller,
 hand-curated regulon panel shown in a FIXED biological order (no hierarchical row clustering).
 Rows are the 14 regulons listed in SELECTED_REGULONS, top-to-bottom in that exact order:
-developmental/patterning TFs first (Nfib, Rfx3, Meis2, Satb1, Tcf12, Jdp2) then the AP-1/Egr
-IEG block (Fos, Fosb, Fosl2, Junb, Egr1-4).
+developmental TFs (Nfib, Rfx3, Meis2), then the AP-1/Egr IEG block (Fos, Fosb, Fosl2, Junb,
+Egr1-4), then Satb1, Tcf12, Jdp2 at the end.
 
 Everything else matches script 48: restricted to the two P21 conditions (P21 normal, P21DR
 dark-reared), each split into the three L2/3 archetypes A/B/C (defined in script 34).
@@ -63,8 +63,9 @@ OUT_FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
 OUT_RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 
 # Regulon rows, top-to-bottom in this FIXED order (no clustering).
-SELECTED_REGULONS = ['Nfib', 'Rfx3', 'Meis2', 'Satb1', 'Tcf12', 'Jdp2',
-                     'Fos', 'Fosb', 'Fosl2', 'Junb', 'Egr1', 'Egr2', 'Egr3', 'Egr4']
+SELECTED_REGULONS = ['Nfib', 'Rfx3', 'Meis2',
+                     'Fos', 'Fosb', 'Fosl2', 'Junb', 'Egr1', 'Egr2', 'Egr3', 'Egr4',
+                     'Satb1', 'Tcf12', 'Jdp2']
 DIRECTION    = '+/+'           # activating regulons only (matches scripts 42/46/47/48)
 SUBCLASS_COL = 'Subclass'
 KEEP_SUBCLASS = 'L2/3'
@@ -259,7 +260,11 @@ def main():
         center = bi * len(ARCHETYPES) + (len(ARCHETYPES) - 1) / 2.0
         ax.text(center, -0.9, a, ha='center', va='bottom', fontsize=11, fontweight='bold')
 
-    # (no gridlines between cells)
+    # thin white gridlines between cells
+    ax.set_xticks(np.arange(-0.5, ncols, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, nrows, 1), minor=True)
+    ax.grid(which='minor', color='white', linewidth=0.5)
+    ax.tick_params(which='minor', length=0)
 
     # thin black divider between the P21 and P21DR triplets
     ax.axvline(len(ARCHETYPES) - 0.5, color='black', linewidth=1.2)
