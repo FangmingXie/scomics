@@ -3,8 +3,8 @@
 Variant of script 47 that restricts to the two P21 conditions (P21 normal, P21DR dark-reared)
 and splits each condition into the three L2/3 archetypes A/B/C (defined in script 34), so each
 column is an (age, archetype) pseudobulk instead of a whole-Age pseudobulk. This exposes how
-the IEG/TF regulons differ across archetypes and how dark-rearing perturbs that, on the same
-13-regulon panel as script 47.
+the IEG/TF regulons differ across archetypes and how dark-rearing perturbs that, over a
+curated panel of TF/IEG regulons (rows ordered by hierarchical clustering).
 
 Archetype membership is recomputed here (NOT read from script 34's saved scores, which contain
 zero P21DR cells): per-cell A/B/C scores are recomputed for the joint P21 + P21DR L2/3 pool
@@ -26,7 +26,7 @@ Pipeline:
      gene to [0,1] jointly across the 6 columns; activity per regulon = mean over targets present.
   7. Per-row max-normalize (each regulon / its own max across the 6 cols); hierarchically cluster
      rows (correlation distance, average linkage) for row order.
-  8. RdBu_r heatmap (13 rows x 6 cols), P21|P21DR divider, two-line column labels.
+  8. rocket_r heatmap (regulon rows x 6 cols), P21|P21DR divider, two-line column labels.
 
 Reads:
   links/it/superdupermegaRNA_yoo25_IT_AllAges.h5ad
@@ -49,6 +49,7 @@ import anndata as ad
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+import seaborn as sns  # registers the 'rocket'/'rocket_r' colormaps with matplotlib
 
 plt.rcParams['pdf.fonttype'] = 42     # editable vector text in PDF
 plt.rcParams['svg.fonttype'] = 'none'  # editable vector text in SVG
@@ -63,9 +64,11 @@ IN_MARKERS  = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '34.follow.t
 OUT_FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
 OUT_RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 
-# Regulon rows (same 13 as script 47).
-SELECTED_REGULONS = ['Fos', 'Fosb', 'Fosl2', 'Egr1', 'Egr2', 'Egr3', 'Egr4',
-                     'Rfx3', 'Meis2', 'Nfib', 'Tcf12', 'Jdp2', 'Satb1']
+# Regulon rows (row order is set by clustering below; this is just the input set).
+SELECTED_REGULONS = ['Nfib', 'Rfx3', 'Meis2', 'Bcl11a', 'Zbtb20', 'Pbx1', 'Satb2', 'Tcf4',
+                     'Mef2c', 'Fosl2', 'Egr3', 'Fos', 'Smad3', 'Fosb', 'Egr4', 'Egr2',
+                     'Junb', 'Atf6', 'Egr1', 'Etv5', 'Mxi1', 'Irf2', 'Tfdp2', 'Klf9',
+                     'Satb1', 'Jdp2', 'Tcf12', 'Nr3c1']
 DIRECTION    = '+/+'           # activating regulons only (matches scripts 42/46/47)
 SUBCLASS_COL = 'Subclass'
 KEEP_SUBCLASS = 'L2/3'
@@ -82,7 +85,7 @@ N_TOP_CELLS  = 300             # top cells (by archetype score) per (age, archet
 SCORE_PCTILE = (2, 98)         # per-gene percentile clip for scoring (script 34)
 CP10K        = 1e4             # CP10k target for log2 scoring expression
 CP_TARGET    = 1e6             # CPM for pseudobulk activity
-CMAP         = 'RdBu_r'        # per-row [0,1] color: blue (low) -> red (high)
+CMAP         = 'rocket_r'      # per-row [0,1] color (seaborn rocket, reversed): light -> dark
 CLUSTER_METRIC = 'correlation'  # row distance for hierarchical clustering
 CLUSTER_METHOD = 'average'      # linkage method
 
