@@ -131,37 +131,60 @@ def _add_archetype_3d_scene(fig, aa, noc, lg, scene, color='black', marker_size=
 # ---------------------------------------------------------------------------
 
 def save_score_scatter_pdf(xp, scores, names, aa, title, out_path,
-                           cmap='RdBu_r', pctile=(5, 95), s=3, dpi=300):
+                           cmap='RdBu_r', pctile=(5, 95), s=3, dpi=300,
+                           aa_labels=None, colorbar_title='archetype score [0–1]',
+                           vlims=None):
     """Save a per-score PC1-vs-PC2 scatter as a vectorized PDF (rasterized points).
 
     One panel per score (column of `scores`). Points are drawn with rasterized=True so
     the dense cloud is a single embedded bitmap, while axes/text/archetype overlay stay
     vector. Per-panel color scale is clipped at the `pctile` (low, high) of each score.
 
-    xp:     (n_cells, >=2) coordinate array; columns 0,1 used as PC1, PC2.
-    scores: (n_cells, n_scores) array; each column colors one panel.
-    names:  list of score names (one per scores column), used in panel titles.
-    aa:     (n_archetypes, >=2) archetype coords (PC space); diamonds + polygon overlay.
+    xp:             (n_cells, >=2) coordinate array; columns 0,1 used as PC1, PC2.
+    scores:         (n_cells, n_scores) array; each column colors one panel.
+    names:          list of score names (one per scores column), used in panel titles.
+    aa:             (n_archetypes, >=2) archetype coords (PC space); diamonds + polygon.
+    aa_labels:      optional list of labels (one per aa row) annotated next to each diamond.
+    cmap:           colormap shared by all panels, or one per panel (name or Colormap).
+    colorbar_title: colorbar label; a str shared by all panels, or one str per panel.
+    vlims:          optional list, one entry per panel: (vmin, vmax) to override the
+                    percentile clipping for that panel, or None to keep it (e.g. use
+                    (-x, x) to center a difference panel's diverging colormap at zero).
     """
     plt.rcParams['pdf.fonttype'] = 42   # editable vector text
     scores = np.asarray(scores)
     n = len(names)
+    if aa_labels is not None and len(aa_labels) != len(aa):
+        raise ValueError(f'aa_labels has {len(aa_labels)} entries but aa has {len(aa)} rows')
+    cbar_titles = [colorbar_title] * n if isinstance(colorbar_title, str) else list(colorbar_title)
+    if len(cbar_titles) != n:
+        raise ValueError(f'colorbar_title has {len(cbar_titles)} entries but there are {n} panels')
+    cmaps = [cmap] * n if isinstance(cmap, (str, mcolors.Colormap)) else list(cmap)
+    if len(cmaps) != n:
+        raise ValueError(f'cmap has {len(cmaps)} entries but there are {n} panels')
+    if vlims is not None and len(vlims) != n:
+        raise ValueError(f'vlims has {len(vlims)} entries but there are {n} panels')
     fig, axes = plt.subplots(1, n, figsize=(4.2 * n, 4), squeeze=False)
     for k, name in enumerate(names):
         ax = axes[0, k]
         vals = scores[:, k]
-        vmin, vmax = np.percentile(vals, pctile)
-        sc = ax.scatter(xp[:, 0], xp[:, 1], c=vals, cmap=cmap, vmin=vmin, vmax=vmax,
+        vmin, vmax = (vlims[k] if vlims is not None and vlims[k] is not None
+                      else np.percentile(vals, pctile))
+        sc = ax.scatter(xp[:, 0], xp[:, 1], c=vals, cmap=cmaps[k], vmin=vmin, vmax=vmax,
                         s=s, linewidths=0, rasterized=True)
         # archetype overlay (vector): diamonds + closing polygon
         ax.plot(list(aa[:, 0]) + [aa[0, 0]], list(aa[:, 1]) + [aa[0, 1]],
                 '-', color='black', linewidth=1.0)
         ax.scatter(aa[:, 0], aa[:, 1], marker='D', color='black', s=30, zorder=3)
+        if aa_labels is not None:
+            for (ax_, ay_), label in zip(aa[:, :2], aa_labels):
+                ax.annotate(label, (ax_, ay_), textcoords='offset points', xytext=(5, 5),
+                            fontsize=8, fontweight='bold', color='black', zorder=4)
         ax.set_aspect('equal', adjustable='box')   # equal PC1/PC2 scaling (true geometry)
         ax.set_xlabel('PC1')
         ax.set_ylabel('PC2')
         ax.set_title(f'Score {name}')
-        fig.colorbar(sc, ax=ax, label='archetype score [0–1]', shrink=0.8)
+        fig.colorbar(sc, ax=ax, label=cbar_titles[k], shrink=0.8)
         sns.despine(ax=ax)
     fig.suptitle(title)
     fig.tight_layout()
