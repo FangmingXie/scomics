@@ -1,12 +1,13 @@
 """Mouse B and C−A archetype scores on the seeded 56.* human PCHA embedding (plots only).
 
-The script-54 figure rendered on the 56.* embedding (seeded PCHA re-fit that also saves
-its inner-PCA loadings). Only the embedding inputs and the output path differ from 54;
-the mouse-derived scores, colormaps, percentiles, axis flip and primed vertex labels are
-unchanged. Script 54 and 54.* are kept as the original record. No recomputation here.
+The script-54 figure rendered on the fully seeded chain: the mouse-derived scores come from
+script 60 (mouse markers from the seeded 58.* fit, mapped to human orthologs) and the
+embedding from the seeded 56.* re-fit. Colormaps, percentiles, axis flip and primed vertex
+labels are unchanged from 54. Script 54 and 54.* are kept as the original record — that one
+still shows the unseeded 22.* scores. No recomputation here.
 
 Reads:
-  local_data/res/l23_evo/22.human_archetype_scores.tsv
+  local_data/res/l23_evo/60.mouse_archetype_scores_on_human_cells.tsv
   local_data/res/l23_evo/56.human_pcha_xp.tsv
   local_data/res/l23_evo/56.human_pcha_aa.tsv
 Outputs:
@@ -27,7 +28,7 @@ from viz import save_score_scatter_pdf
 # --- file paths ---
 OUT_RES_DIR  = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'l23_evo')
 OUT_FIG_DIR  = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'l23_evo')
-IN_SCORES    = os.path.join(OUT_RES_DIR, '22.human_archetype_scores.tsv')
+IN_SCORES    = os.path.join(OUT_RES_DIR, '60.mouse_archetype_scores_on_human_cells.tsv')
 IN_PCHA_XP   = os.path.join(OUT_RES_DIR, '56.human_pcha_xp.tsv')
 IN_PCHA_AA   = os.path.join(OUT_RES_DIR, '56.human_pcha_aa.tsv')
 OUT_PDF      = os.path.join(OUT_FIG_DIR, '57.human_mouse_b_ca_scores.pdf')
