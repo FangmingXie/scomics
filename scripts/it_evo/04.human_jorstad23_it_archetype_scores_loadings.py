@@ -29,8 +29,10 @@ Outputs (per TOKEN in L23 / L4 / L5IT / L6IT):
   local_data/res/it_evo/04.human_<TOKEN>_top_cells.tsv
   local_data/res/it_evo/04.human_<TOKEN>_archetype_markers.tsv
   local_data/res/it_evo/04.human_<TOKEN>_archetype_scores.tsv
-  local_data/fig/it_evo/04.human_<TOKEN>_archetype_scatter.html
   local_data/fig/it_evo/04.human_<TOKEN>_archetype_scores.html
+
+The categorical PCHA scatter (04.human_<TOKEN>_archetype_scatter.html) is rendered
+separately by 04.viz.human_jorstad23_it_archetype_scatter.py, which reads the TSVs above.
 """
 
 import os
@@ -46,7 +48,7 @@ from statsmodels.stats.multitest import multipletests
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(PROJECT_ROOT, 'scripts'))
 
-from viz import scatter_categorical_html, gene_expr_scatter_html
+from viz import gene_expr_scatter_html
 from scomics.main import SCA
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -123,7 +125,6 @@ for cfg in SUBCLASSES:
     out_top_cells  = os.path.join(OUT_RES_DIR, f'04.human_{token}_top_cells.tsv')
     out_markers    = os.path.join(OUT_RES_DIR, f'04.human_{token}_archetype_markers.tsv')
     out_scores     = os.path.join(OUT_RES_DIR, f'04.human_{token}_archetype_scores.tsv')
-    out_arch_html  = os.path.join(OUT_FIG_DIR, f'04.human_{token}_archetype_scatter.html')
     out_score_html = os.path.join(OUT_FIG_DIR, f'04.human_{token}_archetype_scores.html')
 
     print(f'\n{"=" * 70}\n{token} — human {subclass}  '
@@ -287,19 +288,11 @@ for cfg in SUBCLASSES:
                  columns=[f'score_{n}' for n in archetype_names]).to_csv(out_scores, sep='\t')
     print(f'Saved {out_scores}')
 
-    # --- PCHA scatter ---
-    print('Generating PCHA scatter...')
+    # The categorical PCHA scatter is rendered by
+    # 04.viz.human_jorstad23_it_archetype_scatter.py from the TSVs written above, so that
+    # its coloring can be changed without re-running the Wilcoxon loop.
     panels = [(0, 1, 'PC1', 'PC2'), (0, 2, 'PC1', 'PC3'), (1, 2, 'PC2', 'PC3')][:max(ndim - 1, 1)]
     panel_3d = (0, 1, 2, 'PC1', 'PC2', 'PC3') if ndim >= 3 else None
-    scatter_categorical_html(
-        xp_grid=[sca.xp],
-        cell_metadata={CLUSTER_COL: types},
-        title=f'Jorstad23 human {subclass} — varimax PCHA space (NOC={noc})',
-        out_path=out_arch_html,
-        panels=panels,
-        panel_3d=panel_3d,
-        arch_vis=sca.aa,
-    )
 
     # --- archetype score scatter ---
     print('Generating archetype score scatter...')
