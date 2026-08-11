@@ -20,7 +20,10 @@ scomics/
 │   ├── astro/             
 │   ├── ...                
 │   └── l23_evo/           
-├── docs/                 # documentation
+├── report/                # implementation and results write-ups, organized by project
+│   ├── astro/             
+│   ├── ...                
+│   └── l23_evo/           
 ├── scripts/               # standalone analysis scripts, organized by projects 
 │   ├── common.py          # shared utilities for scripts
 │   ├── cheng22/           # Cheng et al. 2022 analysis
