@@ -193,6 +193,78 @@ def save_score_scatter_pdf(xp, scores, names, aa, title, out_path,
     print(f"  Saved {out_path}")
 
 
+def save_score_grid_pdf(rows, col_names, scores, title, out_path,
+                        cmap='RdBu_r', pctile=(5, 95), s=1.5, dpi=300,
+                        panel_size=2.0, colorbar_title='archetype score [0–1]',
+                        highlight=None):
+    """Save a rows x columns grid of score scatters with one shared colorbar per column.
+
+    `save_score_scatter_pdf` draws a single row and gives every panel its own colorbar and
+    its own percentile limits, which makes panels comparable only within a score. Here each
+    column's (vmin, vmax) is taken from the pooled values of that column across *all* rows,
+    so a column reads as "where does this score live" across the different embeddings —
+    which requires the caller to have computed the scores on one common scale.
+
+    rows:      list of dicts, one per row: 'label' (row title), 'xp' (n_cells, >=2)
+               coordinates, 'aa' (n_archetypes, >=2) archetype coords, 'aa_labels'
+               (optional list, one per aa row). Rows may differ in cell count.
+    col_names: list of column titles.
+    scores:    scores[i][j] is the length-n_cells_i score vector for row i, column j.
+    highlight: optional set of (row, col) index pairs drawn with contrasting spines.
+    """
+    plt.rcParams['pdf.fonttype'] = 42   # editable vector text
+    n_rows, n_cols = len(rows), len(col_names)
+    if len(scores) != n_rows or any(len(r) != n_cols for r in scores):
+        raise ValueError(f'scores must be {n_rows} x {n_cols}, got '
+                         f'{len(scores)} x {[len(r) for r in scores]}')
+    for i, row in enumerate(rows):
+        for j in range(n_cols):
+            if len(scores[i][j]) != len(row['xp']):
+                raise ValueError(f'scores[{i}][{j}] has {len(scores[i][j])} values but row '
+                                 f'{i} ({row["label"]}) has {len(row["xp"])} cells')
+    highlight = set() if highlight is None else set(highlight)
+
+    # per-column limits over the pooled rows — the point of the figure
+    vlims = [np.percentile(np.concatenate([scores[i][j] for i in range(n_rows)]), pctile)
+             for j in range(n_cols)]
+
+    fig, axes = plt.subplots(n_rows, n_cols, squeeze=False, layout='constrained',
+                             figsize=(panel_size * n_cols, panel_size * n_rows))
+    for j, col_name in enumerate(col_names):
+        vmin, vmax = vlims[j]
+        for i, row in enumerate(rows):
+            ax = axes[i, j]
+            xp, aa = row['xp'], row['aa']
+            sc = ax.scatter(xp[:, 0], xp[:, 1], c=scores[i][j], cmap=cmap,
+                            vmin=vmin, vmax=vmax, s=s, linewidths=0, rasterized=True)
+            # archetype overlay (vector): diamonds + closing polygon
+            ax.plot(list(aa[:, 0]) + [aa[0, 0]], list(aa[:, 1]) + [aa[0, 1]],
+                    '-', color='black', linewidth=0.8)
+            ax.scatter(aa[:, 0], aa[:, 1], marker='D', color='black', s=12, zorder=3)
+            for (ax_, ay_), label in zip(aa[:, :2], row.get('aa_labels') or []):
+                ax.annotate(label, (ax_, ay_), textcoords='offset points', xytext=(3, 3),
+                            fontsize=6, fontweight='bold', color='black', zorder=4)
+            ax.set_aspect('equal', adjustable='box')   # one embedding per row
+            ax.set_xticks([])
+            ax.set_yticks([])
+            if i == 0:
+                ax.set_title(col_name, fontsize=9)
+            if j == 0:
+                ax.set_ylabel(row['label'], fontsize=9)
+            for spine in ax.spines.values():
+                spine.set_visible((i, j) in highlight)
+                spine.set_color('#e41a1c')
+                spine.set_linewidth(1.5)
+        cb = fig.colorbar(sc, ax=axes[:, j].tolist(), location='bottom',
+                          shrink=0.9, aspect=12, pad=0.01)
+        cb.ax.tick_params(labelsize=6)
+        cb.set_label(colorbar_title, fontsize=6)
+    fig.suptitle(f'{title}\ncolor scale shared down each column', fontsize=11)
+    fig.savefig(out_path, bbox_inches='tight', dpi=dpi)
+    plt.close(fig)
+    print(f"  Saved {out_path}")
+
+
 def save_gene_scatter_pdf(xp, gene_vals, panels, aa, title, out_path,
                           cmap='RdBu_r', pctile=(9, 95), s=5, dpi=300,
                           colorbar_title='z-score'):
