@@ -83,10 +83,13 @@ markers = {cfg['token']: pd.read_csv(
 
 COLUMNS = [{'key': f'{cfg["token"]}_{ALPHABET[k]}',
             'token': cfg['token'],
-            'display': f'mouse {cfg["mouse_subclass"]} {ALPHABET[k]}',
+            'label': f'mouse {cfg["mouse_subclass"]} {ALPHABET[k]}',
             'genes': markers[cfg['token']][
                 markers[cfg['token']]['archetype'] == f'archetype_{k+1}']['gene'].values}
            for cfg in SUBCLASSES for k in range(cfg['noc'])]
+# the whole marker set is used — no ortholog step to lose genes to, unlike 12
+for col in COLUMNS:
+    col['display'] = f'{col["label"]}\n({len(col["genes"])} genes)'
 print(f'{len(COLUMNS)} mouse archetype columns: {", ".join(c["key"] for c in COLUMNS)}')
 
 print(f'\nLoading {IN_MOUSE_H5AD}...')
@@ -104,7 +107,7 @@ for col in COLUMNS:
         raise ValueError(
             f'{col["key"]}: {len(missing)} of its {len(col["genes"])} marker genes are '
             f'absent from the mouse matrix (e.g. {missing[:5]})')
-    print(f'  {col["key"]} ({col["display"]}): {len(col["genes"])} marker genes')
+    print(f'  {col["key"]} ({col["label"]}): {len(col["genes"])} marker genes')
 
 union_genes = sorted({g for col in COLUMNS for g in col['genes']})
 gene_to_idx = {g: i for i, g in enumerate(gene_names)}

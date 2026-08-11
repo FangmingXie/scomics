@@ -10,10 +10,17 @@ Thin caller: all of the computation is script 11, which scores every mouse arche
 every human cell against one pooled per-gene scale (the shared column colorbar needs it).
 The four diagonal cells — the pairs script 09 quantifies — are outlined.
 
+Each column title carries `n_genes_used/n_mouse_markers`. Being explicit matters here: a
+column is *not* the mouse marker set, it is that set's 1-to-1 human orthologs that exist in
+the human matrix, which is all a cross-species score can be computed on. Unlike 13/14,
+where the marker set is used whole, 88-98% of each mouse set survives the mapping.
+
 Reads (per TOKEN in L23 / L4 / L5IT / L6IT):
   local_data/res/it_evo/11.mouse_all_archetype_scores_on_human_<TOKEN>.tsv
   local_data/res/it_evo/04.human_<TOKEN>_pcha_xp.tsv
   local_data/res/it_evo/04.human_<TOKEN>_pcha_aa.tsv
+  local_data/res/it_evo/11.mouse_all_archetype_columns.tsv   (gene count per column title;
+      read rather than re-derived so the ortholog filter stays defined only in 11)
 Outputs:
   local_data/fig/it_evo/12.human_mouse_all_scores_grid.pdf
 """
@@ -31,6 +38,7 @@ from viz import save_score_grid_pdf
 # --- file paths ---
 OUT_RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it_evo')
 OUT_FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it_evo')
+IN_COLUMNS  = os.path.join(OUT_RES_DIR, '11.mouse_all_archetype_columns.tsv')
 OUT_PDF     = os.path.join(OUT_FIG_DIR, '12.human_mouse_all_scores_grid.pdf')
 
 # ===========================================================================
@@ -96,12 +104,23 @@ for cfg in SUBCLASSES:
     scores.append([scores_df[k].values for k in col_keys])
     print(f'{token}: {len(xp_df)} cells x {len(col_keys)} mouse archetype scores')
 
-# column keys are `<mouse token>_<letter>`, in script 11's L23 -> L6IT order
+# column keys are `<mouse token>_<letter>`, in script 11's L23 -> L6IT order.
+# The count in each title is `n_genes_used/n_mouse_markers`: a cross-species score is
+# computed on the mouse marker's 1-to-1 human orthologs that exist in the human matrix,
+# NOT on the mouse marker set itself, so the two numbers differ (11 retains 88-98%).
+cols_df = pd.read_csv(IN_COLUMNS, sep='\t').set_index('key')
+missing = [k for k in col_keys if k not in cols_df.index]
+if missing:
+    raise ValueError(f'{IN_COLUMNS} has no row for score columns {missing} — it must be '
+                     f'the table 11 wrote alongside these score TSVs')
+
 display = {cfg['token']: cfg['mouse_subclass'] for cfg in SUBCLASSES}
-col_names = [f'mouse {display[k.rsplit("_", 1)[0]]} {k.rsplit("_", 1)[1]}' for k in col_keys]
+col_names = [f'mouse {display[k.rsplit("_", 1)[0]]} {k.rsplit("_", 1)[1]}\n'
+             f'({cols_df.loc[k, "n_genes_used"]}/{cols_df.loc[k, "n_mouse_markers"]} '
+             f'orthologs)' for k in col_keys]
 diagonal  = {(i, j) for i, cfg in enumerate(SUBCLASSES)
              for j, k in enumerate(col_keys) if k.rsplit('_', 1)[0] == cfg['token']}
-print(f'Columns: {", ".join(col_names)}')
+print('Columns: ' + ', '.join(n.replace('\n', ' ') for n in col_names))
 print(f'Diagonal (script-09) cells outlined: {sorted(diagonal)}')
 
 save_score_grid_pdf(

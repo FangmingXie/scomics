@@ -99,10 +99,13 @@ markers = {cfg['token']: pd.read_csv(
 
 COLUMNS = [{'key': f'{cfg["token"]}_{ALPHABET[k]}',
             'token': cfg['token'],
-            'display': f'human {cfg["human_subclass"]} {display_letter(cfg, k)}',
+            'label': f'human {cfg["human_subclass"]} {display_letter(cfg, k)}',
             'genes': markers[cfg['token']][
                 markers[cfg['token']]['archetype'] == f'archetype_{k+1}']['gene'].values}
            for cfg in SUBCLASSES for k in range(cfg['noc'])]
+# the whole marker set is used — no ortholog step to lose genes to, unlike 12
+for col in COLUMNS:
+    col['display'] = f'{col["label"]}\n({len(col["genes"])} genes)'
 print(f'{len(COLUMNS)} human archetype columns: {", ".join(c["key"] for c in COLUMNS)}')
 
 # ---------------------------------------------------------------------------
@@ -133,7 +136,7 @@ for cfg in SUBCLASSES:
                     f'{col["key"]}: {len(missing)} of its {len(col["genes"])} marker genes '
                     f'are absent from the human matrix (e.g. {missing[:5]}) — markers and '
                     f'matrix must share the {GENE_NAME_COL} vocabulary')
-            print(f'  {col["key"]} ({col["display"]}): {len(col["genes"])} marker genes')
+            print(f'  {col["key"]} ({col["label"]}): {len(col["genes"])} marker genes')
 
         union_genes = sorted({g for col in COLUMNS for g in col['genes']})
         gene_to_idx = {g: i for i, g in enumerate(gene_names_ref)}

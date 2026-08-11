@@ -28,6 +28,8 @@ Outputs:
   local_data/res/it_evo/11.mouse_all_archetype_scores_on_human_<TOKEN>.tsv  (4 files,
       11 score columns each, index = cell barcode)
   local_data/res/it_evo/11.pooled_gene_scale.tsv                      (gene, lo, hi)
+  local_data/res/it_evo/11.mouse_all_archetype_columns.tsv            (per score column:
+      how many mouse markers it started from and how many genes the score actually used)
 """
 
 import os
@@ -45,6 +47,7 @@ LINK_DIR       = os.path.join(PROJECT_ROOT, 'links', 'it_evo')
 OUT_RES_DIR    = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it_evo')
 IN_ORTHOLOGS   = os.path.join(PROJECT_ROOT, 'data', 'human_mouse_orthologs.tsv')
 OUT_GENE_SCALE = os.path.join(OUT_RES_DIR, '11.pooled_gene_scale.tsv')
+OUT_COLUMNS    = os.path.join(OUT_RES_DIR, '11.mouse_all_archetype_columns.tsv')
 
 # `mouse_noc` must match script 05's `noc` for the same token (as in 06).
 SUBCLASSES = [
@@ -80,6 +83,8 @@ markers = {cfg['token']: pd.read_csv(
 
 COLUMNS = [{'key': f'{cfg["token"]}_{ALPHABET[k]}',
             'mouse_token': cfg['token'],
+            'mouse_subclass': cfg['mouse_subclass'],
+            'archetype': ALPHABET[k],
             'mouse_genes': markers[cfg['token']][
                 markers[cfg['token']]['archetype'] == f'archetype_{k+1}']['gene'].values}
            for cfg in SUBCLASSES for k in range(cfg['mouse_noc'])]
@@ -123,6 +128,16 @@ for cfg in SUBCLASSES:
         union_cols  = [gene_to_idx[g] for g in union_genes]
         union_pos   = {g: i for i, g in enumerate(union_genes)}
         print(f'  union of the {len(COLUMNS)} gene lists: {len(union_genes)} genes')
+
+        # per-column gene counts, so 12 can title a column without redoing the ortholog
+        # mapping — the filter that decides `n_genes_used` lives only here
+        pd.DataFrame([{'key': col['key'], 'mouse_token': col['mouse_token'],
+                       'mouse_subclass': col['mouse_subclass'],
+                       'archetype': col['archetype'],
+                       'n_mouse_markers': len(col['mouse_genes']),
+                       'n_genes_used': len(col['human_genes'])}
+                      for col in COLUMNS]).to_csv(OUT_COLUMNS, sep='\t', index=False)
+        print(f'  Saved {OUT_COLUMNS}')
     elif not np.array_equal(gene_names, gene_names_ref):
         raise ValueError(
             f'{cfg["h5ad"]} var[{GENE_NAME_COL}] differs from the first h5ad — the pooled '
