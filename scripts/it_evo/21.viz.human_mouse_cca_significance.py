@@ -93,8 +93,32 @@ def analyze(cfg):
 
     spec = pd.read_csv(os.path.join(RES_DIR, f'16.{cfg["token"]}_axis_cca_spectrum.tsv'),
                        sep='\t').set_index('component')
-    cv = {i: float(spec.loc[f'CCA{i+1}', 'r_cv_blocked']) for i in range(obs.shape[0])}
-    return {'token': cfg['token'], 'n': n, 'obs': obs, 'null': null, 'cv': cv, 'k': obs.shape[0]}
+    k = obs.shape[0]
+    cv = {i: float(spec.loc[f'CCA{i+1}', 'r_cv_blocked']) for i in range(k)}
+
+    # cell-level variance carried by each canonical direction, as a fraction of the total
+    # variance in the Gate-A VX subspace: EV_i = âᵀ Σ â / trace(Σ) with â the unit canonical
+    # weight vector (16) and Σ the cell VX covariance, computed per species.
+    def ev_fraction(coords_path, vx_cols, weights_path):
+        C = pd.read_csv(coords_path, sep='\t', index_col=0)[vx_cols].values
+        cov = np.cov(C, rowvar=False)
+        total = np.trace(cov)
+        W = pd.read_csv(weights_path, sep='\t', index_col=0)
+        out = {}
+        for i in range(k):
+            a = W.loc[f'CCA{i+1}', vx_cols].to_numpy(dtype=float)   # object row -> float
+            a = a / np.linalg.norm(a)
+            out[i] = float(a @ cov @ a / total)
+        return out
+
+    ev_h = ev_fraction(os.path.join(RES_DIR, f'02.human_{cfg["token"]}_varimax_coords.tsv'),
+                       cfg['human_vx'],
+                       os.path.join(RES_DIR, f'16.{cfg["token"]}_axis_cca_weights_human.tsv'))
+    ev_m = ev_fraction(os.path.join(IT_RES_DIR, cfg['mouse_loadings'].replace('loadings', 'coords')),
+                       cfg['mouse_vx'],
+                       os.path.join(RES_DIR, f'16.{cfg["token"]}_axis_cca_weights_mouse.tsv'))
+    return {'token': cfg['token'], 'n': n, 'obs': obs, 'null': null, 'cv': cv, 'k': k,
+            'ev_h': ev_h, 'ev_m': ev_m}
 
 
 results = [analyze(cfg) for cfg in SUBCLASSES]
@@ -130,6 +154,8 @@ def detail_panel(res, comp, out_path):
              f'null 95th/99th/max = {p95:.3f} / {p99:.3f} / {null_max:.3f}\n'
              f'null skew = +{skew:.2f}  (right-skewed)\n'
              f'blocked-CV r = {res["cv"][comp]:.3f}\n'
+             f'explained var of VX subspace: '
+             f'human {res["ev_h"][comp]:.0%}, mouse {res["ev_m"][comp]:.0%}\n'
              f'{res["n"]} shared orthologs')
     ax.text(0.97, 0.97, stats, transform=ax.transAxes, ha='right', va='top', fontsize=9,
             family='monospace',
@@ -168,7 +194,9 @@ def grid_figure(results, out_path):
             ax.axvline(res['cv'][c], color='#1f77b4', lw=1.4, ls='-.')
             ax.axvline(obs, color='#d62728', lw=2.0)
 
-            ax.text(0.96, 0.96, f'r={obs:.3f}\nz={z:.1f}\n{p_str}\nCV={res["cv"][c]:.2f}',
+            ax.text(0.96, 0.96,
+                    f'r={obs:.3f}\nz={z:.1f}\n{p_str}\nCV={res["cv"][c]:.2f}\n'
+                    f'EV h/m={res["ev_h"][c]:.0%}/{res["ev_m"][c]:.0%}',
                     transform=ax.transAxes, ha='right', va='top', fontsize=8, family='monospace',
                     bbox=dict(boxstyle='round', facecolor='white', edgecolor='0.75', alpha=0.9))
             ax.set_xlim(0, max(obs, res['cv'][c], np.percentile(null, 99)) * 1.15)
