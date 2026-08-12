@@ -21,6 +21,9 @@ Reads (per TOKEN in L23 / L4 / L5IT / L6IT):
   local_data/res/it_evo/04.human_<TOKEN>_pcha_aa.tsv
   local_data/res/it_evo/11.mouse_all_archetype_columns.tsv   (gene count per column title;
       read rather than re-derived so the ortholog filter stays defined only in 11)
+  local_data/res/it_evo/15.mouse_IT_joint_archetype_arc_order.tsv   (the depth order the
+      columns are sorted and relabelled by; read rather than hard-coded so the labels cannot
+      drift from the embedding they came from)
 Outputs:
   local_data/fig/it_evo/12.human_mouse_all_scores_grid.pdf
 """
@@ -39,6 +42,7 @@ from viz import save_score_grid_pdf
 OUT_RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it_evo')
 OUT_FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it_evo')
 IN_COLUMNS  = os.path.join(OUT_RES_DIR, '11.mouse_all_archetype_columns.tsv')
+IN_ARC_ORDER = os.path.join(OUT_RES_DIR, '15.mouse_IT_joint_archetype_arc_order.tsv')
 OUT_PDF     = os.path.join(OUT_FIG_DIR, '12.human_mouse_all_scores_grid.pdf')
 
 # ===========================================================================
@@ -66,7 +70,14 @@ ALPHABET     = ['A', 'B', 'C', 'D', 'E', 'F']
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
-rows, scores, col_keys = [], [], None
+# Columns are ordered and named by script 15's depth arc, not by 05's PCHA vertex order:
+# within a subclass A' is the most superficial archetype and the last letter the deepest.
+# The primes mark a display relabel — 11's score TSVs keep 05's letters — the same convention
+# the human L2/3 row labels already use.
+arc_df   = pd.read_csv(IN_ARC_ORDER, sep='\t').set_index('key').sort_values('arc_rank')
+col_keys = list(arc_df.index)
+
+rows, scores = [], []
 
 for cfg in SUBCLASSES:
     token = cfg['token']
@@ -86,12 +97,10 @@ for cfg in SUBCLASSES:
             f'{in_pcha_xp} ({len(xp_df)} cells) — mouse scores and human embedding must '
             f'cover the same cells in the same order.')
 
-    if col_keys is None:
-        col_keys = list(scores_df.columns)
-    elif list(scores_df.columns) != col_keys:
-        raise ValueError(f'{in_scores} has columns {list(scores_df.columns)}, expected '
-                         f'{col_keys} — every row of the grid must carry the same 11 '
-                         f'mouse archetypes in the same order')
+    if set(scores_df.columns) != set(col_keys):
+        raise ValueError(f'{in_scores} has columns {sorted(scores_df.columns)}, expected the '
+                         f'{len(col_keys)} archetypes of {IN_ARC_ORDER} ({sorted(col_keys)}) '
+                         f'— every row of the grid must carry the same mouse archetypes')
 
     aa_labels = ([cfg['rename'][i] for i in aa_df.index]
                  if 'rename' in cfg else ALPHABET[:len(aa_df)])
@@ -104,23 +113,24 @@ for cfg in SUBCLASSES:
     scores.append([scores_df[k].values for k in col_keys])
     print(f'{token}: {len(xp_df)} cells x {len(col_keys)} mouse archetype scores')
 
-# column keys are `<mouse token>_<letter>`, in script 11's L23 -> L6IT order.
-# The count in each title is `n_genes_used/n_mouse_markers`: a cross-species score is
-# computed on the mouse marker's 1-to-1 human orthologs that exist in the human matrix,
-# NOT on the mouse marker set itself, so the two numbers differ (11 retains 88-98%).
+# The count in each title is `n_genes_used/n_mouse_markers`, keyed by the ORIGINAL column key
+# so it stays bound to the archetype it describes: a cross-species score is computed on the
+# mouse marker's 1-to-1 human orthologs that exist in the human matrix, NOT on the mouse
+# marker set itself, so the two numbers differ (11 retains 88-98%).
 cols_df = pd.read_csv(IN_COLUMNS, sep='\t').set_index('key')
 missing = [k for k in col_keys if k not in cols_df.index]
 if missing:
     raise ValueError(f'{IN_COLUMNS} has no row for score columns {missing} — it must be '
                      f'the table 11 wrote alongside these score TSVs')
 
-display = {cfg['token']: cfg['mouse_subclass'] for cfg in SUBCLASSES}
-col_names = [f'mouse {display[k.rsplit("_", 1)[0]]} {k.rsplit("_", 1)[1]}\n'
+col_names = [f'mouse {arc_df.loc[k, "new_label"]}\n'
              f'({cols_df.loc[k, "n_genes_used"]}/{cols_df.loc[k, "n_mouse_markers"]} '
              f'orthologs)' for k in col_keys]
 diagonal  = {(i, j) for i, cfg in enumerate(SUBCLASSES)
              for j, k in enumerate(col_keys) if k.rsplit('_', 1)[0] == cfg['token']}
-print('Columns: ' + ', '.join(n.replace('\n', ' ') for n in col_names))
+print('Columns (depth order): ' +
+      ', '.join(f'{arc_df.loc[k, "new_label"]} [was {arc_df.loc[k, "old_label"]}]'
+                for k in col_keys))
 print(f'Diagonal (script-09) cells outlined: {sorted(diagonal)}')
 
 save_score_grid_pdf(

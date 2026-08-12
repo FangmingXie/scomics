@@ -20,10 +20,15 @@ log2(CP10k+1) over the `var_names` gene set. Depths are summed on the sparse mat
 only the union marker columns are densified, which is arithmetically identical to 05's
 dense normalize-then-subset but avoids materializing 11061 x 16572.
 
+The grid is laid out in script 15's depth order and its archetypes relabelled A'/B'/C' —
+within a subclass A' is the most superficial, the last letter the deepest — because 05's
+PCHA vertex order is arbitrary. Figure only: the score TSVs below keep 05's letters and order.
+
 Reads:
   local_data/res/it_evo/05.mouse_<TOKEN>_archetype_markers.tsv        (all four)
   links/it_evo/superdupermegaRNA_cheng22_IT_P28NR.h5ad
   local_data/res/it_evo/05.mouse_<TOKEN>_pcha_{xp,aa}.tsv             (all four)
+  local_data/res/it_evo/15.mouse_IT_joint_archetype_arc_order.tsv     (depth order + labels)
 Outputs:
   local_data/res/it_evo/14.mouse_all_archetype_scores_on_mouse_<TOKEN>.tsv  (4 files,
       11 score columns each, index = cell barcode)
@@ -49,6 +54,7 @@ OUT_FIG_DIR    = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it_evo')
 IN_MOUSE_H5AD  = os.path.join(PROJECT_ROOT, 'links', 'it_evo',
                               'superdupermegaRNA_cheng22_IT_P28NR.h5ad')
 OUT_GENE_SCALE = os.path.join(OUT_RES_DIR, '14.pooled_gene_scale.tsv')
+IN_ARC_ORDER   = os.path.join(OUT_RES_DIR, '15.mouse_IT_joint_archetype_arc_order.tsv')
 OUT_PDF        = os.path.join(OUT_FIG_DIR, '14.mouse_all_scores_grid.pdf')
 
 # `noc` must match script 05's noc for the same token.
@@ -91,6 +97,19 @@ COLUMNS = [{'key': f'{cfg["token"]}_{ALPHABET[k]}',
 for col in COLUMNS:
     col['display'] = f'{col["label"]}\n({len(col["genes"])} genes)'
 print(f'{len(COLUMNS)} mouse archetype columns: {", ".join(c["key"] for c in COLUMNS)}')
+
+# Figure-only relabelling: script 15's depth arc, where within a subclass A' is the most
+# superficial archetype and the last letter the deepest. 05's PCHA vertex order (A/B/C) is
+# arbitrary and hides that. The score TSVs written below keep 05's letters and 05's column
+# order; only the grid is relabelled and reordered, so the primes mark the difference.
+ARC = pd.read_csv(IN_ARC_ORDER, sep='\t').set_index('key').sort_values('arc_rank')
+missing = [col['key'] for col in COLUMNS if col['key'] not in ARC.index]
+if missing:
+    raise ValueError(f'{IN_ARC_ORDER} has no row for {missing} — it must be the depth order '
+                     f'15 wrote for these same {len(COLUMNS)} mouse archetypes')
+print('Figure order (depth): ' +
+      ', '.join(f'{ARC.loc[k, "new_label"]} [was {ARC.loc[k, "old_label"]}]'
+                for k in ARC.index))
 
 print(f'\nLoading {IN_MOUSE_H5AD}...')
 m_adata_all = ad.read_h5ad(IN_MOUSE_H5AD)
@@ -195,23 +214,31 @@ for cfg in SUBCLASSES:
     print(f'  mouse {cfg["mouse_subclass"]} mean score per mouse archetype:')
     print(scores_df.mean().round(3).to_string())
 
+    # vertex k keeps its position; only its letter changes. These are the same archetypes as
+    # the columns, so the two relabellings must agree or a diagonal panel would name a vertex
+    # labelled differently in the panel beneath it.
     flip = np.array(cfg.get('flip', [1.0, 1.0]))
     rows.append({'label': f'mouse {cfg["mouse_subclass"]}\n({len(scores_df)} cells)',
                  'xp': xps[token][['PC1', 'PC2']].values * flip,
                  'aa': aas[token][['PC1', 'PC2']].values * flip,
-                 'aa_labels': ALPHABET[:cfg['noc']]})
-    grid_scores.append([scores[:, j] for j in range(len(COLUMNS))])
+                 'aa_labels': [ARC.loc[f'{token}_{ALPHABET[k]}', 'new_letter']
+                               for k in range(cfg['noc'])]})
+    grid_scores.append([scores_df[k].values for k in ARC.index])
 
 del pooled
 gc.collect()
 
-# --- the grid: rows = mouse embeddings, columns = mouse archetypes ---
-diagonal = {(i, j) for i, cfg in enumerate(SUBCLASSES)
-            for j, col in enumerate(COLUMNS) if col['token'] == cfg['token']}
+# --- the grid: rows = mouse embeddings, columns = mouse archetypes in depth order ---
+# gene counts stay keyed by the original column key, so each count remains bound to the
+# archetype it describes rather than to a position
+n_genes   = {col['key']: len(col['genes']) for col in COLUMNS}
+col_names = [f'mouse {ARC.loc[k, "new_label"]}\n({n_genes[k]} genes)' for k in ARC.index]
+diagonal  = {(i, j) for i, cfg in enumerate(SUBCLASSES)
+             for j, k in enumerate(ARC.index) if k.rsplit('_', 1)[0] == cfg['token']}
 print(f'\nDiagonal (own-subclass) cells outlined: {len(diagonal)}')
 
 save_score_grid_pdf(
-    rows, [col['display'] for col in COLUMNS], grid_scores,
+    rows, col_names, grid_scores,
     title='Cheng22 mouse IT archetype scores across all mouse IT subclasses',
     out_path=OUT_PDF,
     cmap=SCORE_CMAP, pctile=SCORE_PCTILE,

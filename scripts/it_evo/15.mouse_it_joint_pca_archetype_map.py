@@ -35,6 +35,9 @@ Caveats:
     used to re-derive archetypes.
   * Cell counts are unbalanced (L4 4732 / L2/3 4044 / L6IT 1436 / L5IT 849), so the PCs are
     weighted toward L4 and L2/3.
+  * This script's own figures and TSVs keep 05's A/B/C letters — it is the derivation of
+    record and its assignment table is keyed by them. Only the survey figures 12 and 14
+    relabel, to the primed A'/B'/C' of ARC_ORDER_CURATED below.
   * PCHA's convex weights S would be the canonical archetype assignment, but 05 does not save
     them. Both proxies are emitted — nearest vertex in that subclass's own PCHA space, and
     argmax of 05's scores — plus a top-cells-only label, whose extremes are where the
@@ -52,6 +55,9 @@ Outputs:
   local_data/res/it_evo/15.mouse_IT_joint_pc_variance_partition.tsv
   local_data/res/it_evo/15.mouse_IT_joint_archetype_assignment.tsv
   local_data/res/it_evo/15.mouse_IT_joint_archetype_centroids.tsv
+  local_data/res/it_evo/15.mouse_IT_joint_archetype_arc_order.tsv   (the depth order and the
+      A'/B'/C' display labels that scripts 12 and 14 relabel their mouse columns by; carries
+      both the curated rank and this script's angular rank, which disagree on L6IT)
   local_data/fig/it_evo/15.mouse_IT_joint_pca_archetype_map.html
   local_data/fig/it_evo/15.mouse_IT_joint_pca_archetype_{map,subclass}.pdf
 """
@@ -86,6 +92,7 @@ OUT_CENTROIDS = os.path.join(OUT_RES_DIR, '15.mouse_IT_joint_archetype_centroids
 OUT_HTML      = os.path.join(OUT_FIG_DIR, '15.mouse_IT_joint_pca_archetype_map.html')
 OUT_PDF_ARCH  = os.path.join(OUT_FIG_DIR, '15.mouse_IT_joint_pca_archetype_map.pdf')
 OUT_PDF_SUB   = os.path.join(OUT_FIG_DIR, '15.mouse_IT_joint_pca_archetype_subclass.pdf')
+OUT_ARC_ORDER = os.path.join(OUT_RES_DIR, '15.mouse_IT_joint_archetype_arc_order.tsv')
 
 # `noc` must match script 05's noc for the same token.
 SUBCLASSES = [
@@ -107,6 +114,24 @@ ALPHABET     = ['A', 'B', 'C', 'D', 'E', 'F']
 # variance partition below. PC3 is largely `sample` and must not be used for this.
 ARC_PCS      = ('PC1', 'PC2')
 ARC_BINS     = 36        # 10-degree bins around the arc, for the connectedness check
+
+# ===========================================================================
+# The depth order the survey figures (12, 14) relabel their mouse archetypes by. This is the
+# angular ordering computed below WITH THE L6IT SEGMENT CORRECTED by visual inspection of the
+# embedding, so it is curated, not purely computed — hence stated here rather than derived.
+# The angular sort is unreliable exactly where it was overruled: it split L6IT, putting
+# `L6IT A` between L4 and L5IT and ordering C before B, but L6IT B and L6IT C are 5.6 degrees
+# and 2.62 units apart (the closest of all 55 centroid pairs, i.e. inside the noise) and
+# L6IT A sits in the arc's interior on only 249 cells, where an angle about the centre is
+# meaningless. Both ranks are written to OUT_ARC_ORDER so the disagreement stays on record.
+# ===========================================================================
+ARC_ORDER_CURATED = [
+    'L2/3 C', 'L2/3 B', 'L2/3 A',
+    'L4 C',   'L4 B',   'L4 A',
+    'L5IT B', 'L5IT A',
+    'L6IT A', 'L6IT B', 'L6IT C',
+]
+# ===========================================================================
 
 os.makedirs(OUT_RES_DIR, exist_ok=True)
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
@@ -307,6 +332,45 @@ for name in arc:
 print('   ' + ' -> '.join(arc))
 print('   subclasses in arc order: ' +
       ' -> '.join(pd.Series([subclass_of(n) for n in arc]).drop_duplicates()))
+
+# --- the depth-order label map the survey figures relabel by ---
+if sorted(ARC_ORDER_CURATED) != sorted(ARCH_ORDER):
+    raise ValueError(f'ARC_ORDER_CURATED is not a permutation of the {len(ARCH_ORDER)} '
+                     f'archetypes: {sorted(set(ARC_ORDER_CURATED) ^ set(ARCH_ORDER))}')
+
+label_meta = {f'{cfg["mouse_subclass"]} {ALPHABET[k]}': (cfg['token'], cfg['mouse_subclass'],
+                                                         ALPHABET[k])
+              for cfg in SUBCLASSES for k in range(cfg['noc'])}
+within_rank = {}
+arc_rows = []
+for rank, label in enumerate(ARC_ORDER_CURATED):
+    token, subclass, old_letter = label_meta[label]
+    j = within_rank.get(subclass, 0)
+    within_rank[subclass] = j + 1
+    new_letter = f"{ALPHABET[j]}'"
+    arc_rows.append({'key': f'{token}_{old_letter}', 'token': token,
+                     'mouse_subclass': subclass, 'old_letter': old_letter,
+                     'old_label': label, 'arc_rank': rank,
+                     'arc_rank_angular': arc.index(label),
+                     'arc_rank_within': j, 'new_letter': new_letter,
+                     'new_label': f'{subclass} {new_letter}'})
+
+arc_df = pd.DataFrame(arc_rows)
+arc_df.to_csv(OUT_ARC_ORDER, sep='\t', index=False)
+print(f'\nSaved {OUT_ARC_ORDER}')
+print('  curated depth order -> display label (12 and 14 relabel by this):')
+for r in arc_rows:
+    print(f"   {r['arc_rank']:2d}  {r['old_label']:9s} -> {r['new_label']:10s}"
+          f"  (angular rank {r['arc_rank_angular']})")
+
+# Report inverted PAIRS, not rank shifts: moving one archetype past others renumbers them
+# without reordering them relative to each other, and calling that a disagreement would
+# overstate how much of the angular result was overruled.
+inverted = [(a['old_label'], b['old_label'])
+            for a, b in itertools.combinations(arc_rows, 2)
+            if a['arc_rank_angular'] > b['arc_rank_angular']]
+print(f'  curated order inverts {len(inverted)} of {len(arc_rows) * (len(arc_rows) - 1) // 2} '
+      f'pairs vs the angular sort: {inverted if inverted else "none"}')
 
 pairs  = list(itertools.combinations(ARCH_ORDER, 2))
 within = [D.loc[a, b] for a, b in pairs if subclass_of(a) == subclass_of(b)]
