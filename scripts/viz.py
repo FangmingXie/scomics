@@ -133,7 +133,7 @@ def _add_archetype_3d_scene(fig, aa, noc, lg, scene, color='black', marker_size=
 def save_score_scatter_pdf(xp, scores, names, aa, title, out_path,
                            cmap='RdBu_r', pctile=(5, 95), s=3, dpi=300,
                            aa_labels=None, colorbar_title='archetype score [0–1]',
-                           vlims=None):
+                           vlims=None, axis_labels=('PC1', 'PC2')):
     """Save a per-score PC1-vs-PC2 scatter as a vectorized PDF (rasterized points).
 
     One panel per score (column of `scores`). Points are drawn with rasterized=True so
@@ -150,6 +150,7 @@ def save_score_scatter_pdf(xp, scores, names, aa, title, out_path,
     vlims:          optional list, one entry per panel: (vmin, vmax) to override the
                     percentile clipping for that panel, or None to keep it (e.g. use
                     (-x, x) to center a difference panel's diverging colormap at zero).
+    axis_labels:    (x, y) axis labels; defaults to ('PC1', 'PC2') for the PCHA embedding.
     """
     plt.rcParams['pdf.fonttype'] = 42   # editable vector text
     scores = np.asarray(scores)
@@ -180,9 +181,9 @@ def save_score_scatter_pdf(xp, scores, names, aa, title, out_path,
             for (ax_, ay_), label in zip(aa[:, :2], aa_labels):
                 ax.annotate(label, (ax_, ay_), textcoords='offset points', xytext=(5, 5),
                             fontsize=8, fontweight='bold', color='black', zorder=4)
-        ax.set_aspect('equal', adjustable='box')   # equal PC1/PC2 scaling (true geometry)
-        ax.set_xlabel('PC1')
-        ax.set_ylabel('PC2')
+        ax.set_aspect('equal', adjustable='box')   # equal x/y scaling (true geometry)
+        ax.set_xlabel(axis_labels[0])
+        ax.set_ylabel(axis_labels[1])
         ax.set_title(f'Score {name}')
         fig.colorbar(sc, ax=ax, label=cbar_titles[k], shrink=0.8)
         sns.despine(ax=ax)
