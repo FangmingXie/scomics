@@ -15,6 +15,11 @@ Two things follow 11 exactly, for the same reasons:
     cross-subclass differences the grid is about, and one colorbar shared down a column
     needs one scale. Diagonal scores therefore differ slightly from 04's numbers; 04 and
     its outputs are untouched and this writes its own TSVs.
+  * The grid's columns are ordered and labelled by script 22's human depth arc (A' = most
+    superficial within each subclass), not by 04's arbitrary PCHA vertex order. The score
+    TSVs keep 04's letters and column order; only the figure moves, and the primes mark the
+    difference — `L5 IT A'` is 04's `L5 IT D`. 22's file must be curated=True or this
+    script refuses it.
   * Pooling relies on all four human h5ads sharing an identical `var` in the same order,
     asserted below.
 
@@ -25,6 +30,7 @@ Reads:
   local_data/res/it_evo/04.human_<TOKEN>_archetype_markers.tsv        (all four)
   links/it_evo/jorstad23_human_WithinArea_<HTOKEN>.h5ad               (all four)
   local_data/res/it_evo/04.human_<TOKEN>_pcha_{xp,aa}.tsv             (all four)
+  local_data/res/it_evo/22.human_IT_joint_archetype_arc_order.tsv     (depth order + labels)
 Outputs:
   local_data/res/it_evo/13.human_all_archetype_scores_on_human_<TOKEN>.tsv  (4 files,
       13 score columns each, index = cell barcode)
@@ -49,23 +55,27 @@ LINK_DIR       = os.path.join(PROJECT_ROOT, 'links', 'it_evo')
 OUT_RES_DIR    = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it_evo')
 OUT_FIG_DIR    = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it_evo')
 OUT_GENE_SCALE = os.path.join(OUT_RES_DIR, '13.pooled_gene_scale.tsv')
+IN_ARC_ORDER   = os.path.join(OUT_RES_DIR,
+                              '22.human_IT_joint_archetype_arc_order.tsv')
 OUT_PDF        = os.path.join(OUT_FIG_DIR, '13.human_all_scores_grid.pdf')
 
 # `noc` must match script 04's noc for the same token.
 # ===========================================================================
-# `rename` / `flip` are VISUALIZATION-ONLY — DO NOT PROPAGATE TO ANALYSIS.
-# Carried for the L23 entry only, identical to 07 / 10 / 12, so the L2/3 row sits in the
-# orientation of local_data/fig/l23_evo/57.human_mouse_b_ca_scores.pdf. `flip` is applied
-# to both cell coords (xp) and archetype coords (aa); `rename` relabels the L2/3 archetypes
-# in BOTH the row's vertex labels and its three column titles, so a column title names the
-# same vertex the diagonal panel draws.
+# `flip` is VISUALIZATION-ONLY — DO NOT PROPAGATE TO ANALYSIS. Carried for the L23 entry
+# only, identical to 07 / 10 / 12, so the L2/3 row sits in the orientation of
+# local_data/fig/l23_evo/57.human_mouse_b_ca_scores.pdf. It is applied to both cell coords
+# (xp) and archetype coords (aa).
+#
+# The hardcoded `rename` this entry used to carry (archetype_1 -> D' ... archetype_4 -> A')
+# is GONE: the labels now come from script 22's depth order, read below. That rename was a
+# plain reversal chosen to match a figure's orientation, never derived from anything; 22's
+# derivation independently reproduces exactly the same L2/3 mapping, which is a check on
+# both, and now the other three subclasses are relabelled on the same footing instead of
+# being left at 04's arbitrary vertex order.
 # ===========================================================================
 SUBCLASSES = [
     {'token': 'L23',  'human_subclass': 'L2/3 IT', 'h5ad': 'jorstad23_human_WithinArea_L23IT.h5ad',
-     'noc': 4,
-     'rename': {'archetype_1': "D'", 'archetype_2': "C'",
-                'archetype_3': "B'", 'archetype_4': "A'"},
-     'flip': [-1.0, 1.0]},
+     'noc': 4, 'flip': [-1.0, 1.0]},
     {'token': 'L4',   'human_subclass': 'L4 IT',   'h5ad': 'jorstad23_human_WithinArea_L4IT.h5ad',
      'noc': 3},
     {'token': 'L5IT', 'human_subclass': 'L5 IT',   'h5ad': 'jorstad23_human_WithinArea_L5IT.h5ad',
@@ -87,11 +97,6 @@ os.makedirs(OUT_RES_DIR, exist_ok=True)
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
 
-def display_letter(cfg, k):
-    """Archetype k's label for this token — the viz-only rename where one is configured."""
-    return cfg['rename'][f'archetype_{k+1}'] if 'rename' in cfg else ALPHABET[k]
-
-
 # --- the 13 score columns: every archetype of every human subclass ---
 markers = {cfg['token']: pd.read_csv(
     os.path.join(OUT_RES_DIR, f'04.human_{cfg["token"]}_archetype_markers.tsv'), sep='\t')
@@ -99,14 +104,29 @@ markers = {cfg['token']: pd.read_csv(
 
 COLUMNS = [{'key': f'{cfg["token"]}_{ALPHABET[k]}',
             'token': cfg['token'],
-            'label': f'human {cfg["human_subclass"]} {display_letter(cfg, k)}',
             'genes': markers[cfg['token']][
                 markers[cfg['token']]['archetype'] == f'archetype_{k+1}']['gene'].values}
            for cfg in SUBCLASSES for k in range(cfg['noc'])]
 # the whole marker set is used — no ortholog step to lose genes to, unlike 12
-for col in COLUMNS:
-    col['display'] = f'{col["label"]}\n({len(col["genes"])} genes)'
 print(f'{len(COLUMNS)} human archetype columns: {", ".join(c["key"] for c in COLUMNS)}')
+
+# Figure-only relabelling and reordering: script 22's depth arc, where within a subclass A'
+# is the most superficial archetype and the last letter the deepest. 04's PCHA vertex order
+# (A/B/C/D) is arbitrary and hides that. The score TSVs written below keep 04's letters and
+# 04's column order; only the grid is relabelled and reordered, so the primes mark which is
+# which — a column titled `L5 IT A'` is 04's `L5 IT D`.
+ARC = pd.read_csv(IN_ARC_ORDER, sep='\t').set_index('key').sort_values('arc_rank')
+if not ARC['curated'].all():
+    raise ValueError(f'{IN_ARC_ORDER} is marked curated=False — that file is script 22\'s '
+                     f'run-1 proposal (the raw angular sort), not a depth record, and must '
+                     f'not be used to label a figure')
+missing = [col['key'] for col in COLUMNS if col['key'] not in ARC.index]
+if missing:
+    raise ValueError(f'{IN_ARC_ORDER} has no row for {missing} — it must be the depth order '
+                     f'21 wrote for these same {len(COLUMNS)} human archetypes')
+print('Figure order (depth): ' +
+      ', '.join(f'{ARC.loc[k, "new_label"]} [was {ARC.loc[k, "old_label"]}]'
+                for k in ARC.index))
 
 # ---------------------------------------------------------------------------
 # One pass over the four h5ads: establish the shared gene index on the first, assert the
@@ -136,7 +156,8 @@ for cfg in SUBCLASSES:
                     f'{col["key"]}: {len(missing)} of its {len(col["genes"])} marker genes '
                     f'are absent from the human matrix (e.g. {missing[:5]}) — markers and '
                     f'matrix must share the {GENE_NAME_COL} vocabulary')
-            print(f'  {col["key"]} ({col["label"]}): {len(col["genes"])} marker genes')
+            print(f'  {col["key"]} (human {ARC.loc[col["key"], "new_label"]}): '
+                  f'{len(col["genes"])} marker genes')
 
         union_genes = sorted({g for col in COLUMNS for g in col['genes']})
         gene_to_idx = {g: i for i, g in enumerate(gene_names_ref)}
@@ -209,19 +230,24 @@ for cfg in SUBCLASSES:
     rows.append({'label': f'human {cfg["human_subclass"]}\n({len(xp_df)} cells)',
                  'xp': xp_df[['PC1', 'PC2']].values * flip,
                  'aa': aa_df[['PC1', 'PC2']].values * flip,
-                 'aa_labels': [display_letter(cfg, k) for k in range(cfg['noc'])]})
-    grid_scores.append([scores[:, j] for j in range(len(COLUMNS))])
+                 'aa_labels': [ARC.loc[f'{token}_{ALPHABET[k]}', 'new_letter']
+                               for k in range(cfg['noc'])]})
+    grid_scores.append([scores_df[k].values for k in ARC.index])
 
 del pooled
 gc.collect()
 
-# --- the grid: rows = human embeddings, columns = human archetypes ---
-diagonal = {(i, j) for i, cfg in enumerate(SUBCLASSES)
-            for j, col in enumerate(COLUMNS) if col['token'] == cfg['token']}
+# --- the grid: rows = human embeddings, columns = human archetypes in depth order ---
+# gene counts stay keyed by the original column key, so each count remains bound to the
+# archetype it describes rather than to a position
+n_genes   = {col['key']: len(col['genes']) for col in COLUMNS}
+col_names = [f'human {ARC.loc[k, "new_label"]}\n({n_genes[k]} genes)' for k in ARC.index]
+diagonal  = {(i, j) for i, cfg in enumerate(SUBCLASSES)
+             for j, k in enumerate(ARC.index) if k.rsplit('_', 1)[0] == cfg['token']}
 print(f'\nDiagonal (own-subclass) cells outlined: {len(diagonal)}')
 
 save_score_grid_pdf(
-    rows, [col['display'] for col in COLUMNS], grid_scores,
+    rows, col_names, grid_scores,
     title='Jorstad23 human IT archetype scores across all human IT subclasses',
     out_path=OUT_PDF,
     cmap=SCORE_CMAP, pctile=SCORE_PCTILE,
