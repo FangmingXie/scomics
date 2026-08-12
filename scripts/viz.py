@@ -310,7 +310,8 @@ def save_gene_scatter_pdf(xp, gene_vals, panels, aa, title, out_path,
 
 
 def save_archetype_scatter_pdf(xp, labels, panels, aa, title, out_path,
-                               label_order=None, cmap='tab10', s=5, dpi=300):
+                               label_order=None, cmap='tab10', s=5, dpi=300,
+                               legend_title='archetype'):
     """Save a single-page categorical scatter PDF colored by archetype label.
 
     Static, vectorized counterpart of `scatter_categorical_html` (archetype coloring).
@@ -324,6 +325,9 @@ def save_archetype_scatter_pdf(xp, labels, panels, aa, title, out_path,
     panels:      list of (col_x, col_y, xlabel, ylabel) into xp columns.
     aa:          (n_dims, n_archetypes) archetype coords; diamonds + closing polygon overlay.
     label_order: optional ordered list of label values (defaults to sorted unique).
+    legend_title: heading over the legend. Defaults to 'archetype' — this helper is used for
+                  other categorical colourings too (subclass, cluster), where that heading
+                  names the wrong variable.
     """
     plt.rcParams['pdf.fonttype'] = 42   # editable vector text
     labels = np.asarray(labels)
@@ -348,7 +352,7 @@ def save_archetype_scatter_pdf(xp, labels, panels, aa, title, out_path,
         ax.set_ylabel(yl)
         ax.set_title(f'{xl} vs {yl}')
         sns.despine(ax=ax)
-    axes[0, -1].legend(title='archetype', loc='center left', bbox_to_anchor=(1.02, 0.5),
+    axes[0, -1].legend(title=legend_title, loc='center left', bbox_to_anchor=(1.02, 0.5),
                        frameon=False, markerscale=2)
     fig.suptitle(title)
     fig.tight_layout()

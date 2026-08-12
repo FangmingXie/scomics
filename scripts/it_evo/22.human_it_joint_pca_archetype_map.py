@@ -65,8 +65,9 @@ Deviations from the mouse script 15, all forced by the human side:
   * Varimax, a Gate-A cut on the variance partition, and a second PCA *inside* the gated
     subspace — the geometry is read on SPC1-SPC2, not on PC1-PC2. Mouse 15 needs two axes
     to carry the cell-type structure and on mouse PC1-PC2 already do; here it takes all
-    three steps to get there. Figures are emitted for all three bases so the progression is
-    visible rather than asserted.
+    three steps to get there. Figures are emitted for all three bases — each on its own
+    most subclass-informative gated components, so the comparison is like for like — and the
+    basis-comparison table quantifies what the panels show.
   * The variance partition takes four factors (cell_type / donor / source / technical),
     not 15's three — `development_stage` stays excluded, being 1:1 with `donor_id`.
   * No interactive HTML: at 93,152 cells the per-category Plotly traces are not worth the
@@ -109,7 +110,11 @@ Outputs:
   local_data/res/it_evo/22.human_IT_joint_spc_coords.tsv
   local_data/res/it_evo/22.human_IT_joint_spc_loadings_{on_vx,gene}.tsv
   local_data/res/it_evo/22.human_IT_joint_{pc,vx,spc}_variance_partition.tsv
-  local_data/res/it_evo/22.human_IT_joint_plane_scan.tsv   (gated VX and SPC planes)
+  local_data/res/it_evo/22.human_IT_joint_plane_scan.tsv   (naive-PC, gated-VX and
+      SPC planes, each with kNN subclass purity and subclass contiguity)
+  local_data/res/it_evo/22.human_IT_joint_component_informativeness.tsv  (per component
+      of all three bases: cell_type partial R², and marginal subclass / archetype R²)
+  local_data/res/it_evo/22.human_IT_joint_basis_comparison.tsv
   local_data/res/it_evo/22.human_IT_joint_archetype_assignment.tsv
   local_data/res/it_evo/22.human_IT_joint_archetype_centroids.tsv
   local_data/res/it_evo/22.human_IT_joint_archetype_arc_order.tsv   (the depth order and the
@@ -149,6 +154,9 @@ OUT_VX_LOAD   = os.path.join(OUT_RES_DIR, '22.human_IT_joint_varimax_loadings.ts
 OUT_PC_VAR    = os.path.join(OUT_RES_DIR, '22.human_IT_joint_pc_variance_partition.tsv')
 OUT_VX_VAR    = os.path.join(OUT_RES_DIR, '22.human_IT_joint_vx_variance_partition.tsv')
 OUT_SCAN      = os.path.join(OUT_RES_DIR, '22.human_IT_joint_plane_scan.tsv')
+OUT_INFORM    = os.path.join(OUT_RES_DIR,
+                             '22.human_IT_joint_component_informativeness.tsv')
+OUT_BASIS     = os.path.join(OUT_RES_DIR, '22.human_IT_joint_basis_comparison.tsv')
 OUT_ASSIGN    = os.path.join(OUT_RES_DIR, '22.human_IT_joint_archetype_assignment.tsv')
 OUT_CENTROIDS = os.path.join(OUT_RES_DIR, '22.human_IT_joint_archetype_centroids.tsv')
 OUT_ARC_ORDER = os.path.join(OUT_RES_DIR, '22.human_IT_joint_archetype_arc_order.tsv')
@@ -224,6 +232,16 @@ DIR_FIRST, DIR_LAST = 'L2/3 IT', 'L6 IT'
 # particular, anatomical depth order plays no part in it — so the subclass sequence the arc
 # comes out in stays independent evidence about the data. The scan below reports every SPC
 # plane's purity so that claim is checkable rather than asserted.
+#
+# Two independent rankings agree on it. The informativeness table ranks components by
+# marginal between-subclass R², and its top two are SPC2 (0.773) and SPC1 (0.688) — the same
+# pair variance picks. That table is also what explains an earlier wrong turn: selecting on
+# `cell_type` partial R² instead picks VX3-VX4, because partial R² asks only whether an axis
+# is uncontaminated, not whether it carries the between-subclass contrast. VX4 is clean
+# (cell_type 0.773) but almost entirely within-subclass (subclass R² 0.363), while VX6 is
+# less clean (0.690) and far more informative (0.758). Ranking the gated VX by subclass R²
+# gives VX6, VX3 — exactly the highest-purity VX plane. Both rankings are emitted so the
+# distinction stays visible.
 # ===========================================================================
 ARC_SPC = ('SPC1', 'SPC2')
 # ===========================================================================
@@ -681,14 +699,32 @@ vx_var.to_csv(OUT_VX_VAR, sep='\t')
 print(f'Saved {OUT_PC_VAR} and {OUT_VX_VAR}')
 
 TECH_FACTORS = ('donor', 'source', 'technical')
-gate_a = [c for c in vx_cols
-          if all(vx_var.loc[c, 'cell_type'] > vx_var.loc[c, t] for t in TECH_FACTORS)]
-print(f'\nJoint-embedding Gate A — VX components the partition calls cell-type driven:')
-for c in vx_cols:
-    mark = 'KEEP  ' if c in gate_a else 'reject'
-    worst = max(TECH_FACTORS, key=lambda t: vx_var.loc[c, t])
-    print(f'  {mark} {c:5s} cell_type={vx_var.loc[c, "cell_type"]:.3f}  '
-          f'largest technical: {worst}={vx_var.loc[c, worst]:.3f}')
+
+
+def gate_of(var_df, cols, label):
+    """Components whose cell_type partial R² beats every technical factor's.
+
+    Applied to all three bases. On VX it is Gate A proper — the SPC basis is built from what
+    it keeps. On the naive PCs it selects nothing (the PC basis is not used for geometry);
+    it is reported so the three bases are judged by one criterion instead of the PC row
+    being exempt from the standard the others are held to.
+    """
+    keep = [c for c in cols
+            if all(var_df.loc[c, 'cell_type'] > var_df.loc[c, t] for t in TECH_FACTORS)]
+    print(f'\n{label}:')
+    for c in cols:
+        worst = max(TECH_FACTORS, key=lambda t: var_df.loc[c, t])
+        print(f'  {"KEEP  " if c in keep else "reject"} {c:5s} '
+              f'cell_type={var_df.loc[c, "cell_type"]:.3f}  '
+              f'largest technical: {worst}={var_df.loc[c, worst]:.3f}')
+    return keep
+
+
+gate_pc = gate_of(pc_var, pc_cols,
+                  'Naive PCs the partition calls cell-type driven (reported for comparison; '
+                  'nothing selects on it)')
+gate_a  = gate_of(vx_var, vx_cols,
+                  'Joint-embedding Gate A — VX components the partition calls cell-type driven')
 if len(gate_a) < 2:
     raise ValueError(f'Gate A kept {len(gate_a)} VX components ({gate_a}) — at least two are '
                      f'needed to read a 2-D arc. The joint embedding is technical-dominated; '
@@ -734,7 +770,45 @@ if leaked:
                      f'unless the gate or the partition is inconsistent')
 
 # ---------------------------------------------------------------------------
-# 7. Centroids, and the diagnostics that say whether a 2-D read is legitimate
+# 7. Which components actually carry cell identity, in all three bases
+# ---------------------------------------------------------------------------
+X_SUBCLASS  = pd.get_dummies(subclasses).values.astype(float)
+X_ARCHETYPE = pd.get_dummies(assign['archetype'].values).values.astype(float)
+
+
+def informativeness(scores_arr, cols, var_df, gate, basis):
+    """How much of each component is cell identity, at the two levels that matter here.
+
+    `cell_type` in the partition is the 24 WithinArea_cluster levels partialled against the
+    technical factors, which answers "is this axis contaminated". It does NOT answer "does
+    this axis carry the between-subclass contrast the arc is read from" — a component can be
+    cleanly cell-type driven and still describe only within-subclass variation (VX8 and SPC5
+    are exactly that). `subclass_r2` and `archetype_r2` are plain marginal R² on the four
+    subclasses and the 13 archetypes, and they are the ranking the basis comparison below is
+    actually about.
+    """
+    rows = [{'basis': basis, 'component': c,
+             'cell_type_partial': round(var_df.loc[c, 'cell_type'], 3),
+             'subclass_r2': round(r2(X_SUBCLASS, scores_arr[:, i]), 3),
+             'archetype_r2': round(r2(X_ARCHETYPE, scores_arr[:, i]), 3),
+             'donor': round(var_df.loc[c, 'donor'], 3),
+             'technical': round(var_df.loc[c, 'technical'], 3),
+             'gate_pass': c in gate}
+            for i, c in enumerate(cols)]
+    df = pd.DataFrame(rows).sort_values('subclass_r2', ascending=False)
+    print(f'\n{basis.upper()} components ranked by between-subclass informativeness:')
+    print(df.drop(columns=['basis']).to_string(index=False))
+    return df
+
+
+inform = pd.concat([informativeness(scores, pc_cols, pc_var, gate_pc, 'pc'),
+                    informativeness(vx_scores, vx_cols, vx_var, gate_a, 'vx'),
+                    informativeness(spc_scores, spc_cols, spc_var, spc_cols, 'spc')])
+inform.to_csv(OUT_INFORM, sep='\t', index=False)
+print(f'\nSaved {OUT_INFORM}')
+
+# ---------------------------------------------------------------------------
+# 8. Centroids, and the diagnostics that say whether a 2-D read is legitimate
 # ---------------------------------------------------------------------------
 centroids = pd.DataFrame(
     [spc_df_all[assign['archetype_top_cells'] == name].mean() for name in ARCH_ORDER],
@@ -780,16 +854,45 @@ def plane_scan(frame, cent_frame, cols, label, ceiling):
 
 vx_ceiling  = knn_purity(vx_df_all, gate_a)
 spc_ceiling = knn_purity(spc_df_all, spc_cols)
+pc_df_all    = pd.DataFrame(scores, index=barcodes, columns=pc_cols)
+centroids_pc = pd.DataFrame(
+    [pc_df_all[assign['archetype_top_cells'] == name].mean() for name in ARCH_ORDER],
+    index=ARCH_ORDER)
 centroids_vx = pd.DataFrame(
     [vx_df_all[assign['archetype_top_cells'] == name].mean() for name in ARCH_ORDER],
     index=ARCH_ORDER)
+pc_ceiling = knn_purity(pc_df_all, gate_pc)
+scan_pc  = plane_scan(pc_df_all, centroids_pc, gate_pc,
+                      f'Plane scan over the {len(gate_pc)} gate-passing naive PCs', pc_ceiling)
 scan_vx  = plane_scan(vx_df_all, centroids_vx, gate_a,
                       f'Plane scan over the {len(gate_a)} Gate-A VX components', vx_ceiling)
 scan_spc = plane_scan(spc_df_all, centroids, spc_cols,
                       f'Plane scan over the {len(spc_cols)} subspace PCs (SPC)', spc_ceiling)
-scan_df = pd.concat([scan_vx.assign(basis='vx'), scan_spc.assign(basis='spc')])
+scan_df = pd.concat([scan_pc.assign(basis='pc'), scan_vx.assign(basis='vx'),
+                     scan_spc.assign(basis='spc')])
 scan_df.to_csv(OUT_SCAN, sep='\t', index=False)
 print(f'\nSaved {OUT_SCAN}')
+
+# The three-line summary the whole basis argument rests on. Emitted rather than asserted:
+# a 2-D read is only legitimate where the best plane approaches its own subspace ceiling
+# AND some plane keeps the subclasses contiguous.
+basis_rows = []
+for name, cols_b, ceil_b, scan_b in (('pc', gate_pc, pc_ceiling, scan_pc),
+                                     ('vx', gate_a, vx_ceiling, scan_vx),
+                                     ('spc', spc_cols, spc_ceiling, scan_spc)):
+    best = scan_b.iloc[0]
+    basis_rows.append({'basis': name, 'n_components': len(cols_b),
+                       'subspace_purity': round(ceil_b, 3),
+                       'best_plane': best['plane'],
+                       'best_plane_purity': best['knn_purity'],
+                       'purity_kept': round(best['knn_purity'] / ceil_b, 3),
+                       'n_contiguous_planes': int(scan_b['contiguous'].sum()),
+                       'n_depth_order_planes': int(scan_b['depth_order'].sum())})
+basis_df = pd.DataFrame(basis_rows)
+basis_df.to_csv(OUT_BASIS, sep='\t', index=False)
+print(f'\nBasis comparison — chance purity {knn_null:.3f}:')
+print(basis_df.to_string(index=False))
+print(f'Saved {OUT_BASIS}')
 
 bad = [c for c in ARC_SPC if c not in spc_cols]
 if bad:
@@ -801,35 +904,54 @@ print(f'  purity in this plane {knn_purity(spc_df_all, ARC_SPC):.3f} vs {spc_cei
       f'(best gated VX plane managed {scan_vx["knn_purity"].max():.3f})')
 
 # ---------------------------------------------------------------------------
-# 8. Figures — one pair per basis, the first three components of each. Read left to right
-#    they are the argument: the naive PCs mix cell type with the technical gradient, varimax
-#    quarantines the gradient on VX1/VX2 but scatters cell type across seven axes, and the
-#    subspace PCs put it back into two. No archetype overlay: the shared helper closes a
-#    polygon through the vertices, which is meaningless across four separately-fit simplices.
+# 9. Figures — one pair per basis, each basis shown on ITS OWN most subclass-informative
+#    gated components (panel 1 is therefore that basis's best plane from the scan above).
+#
+#    Not the first three components of each basis: in the PC and VX bases those are the
+#    nuisance axes the gate rejects (PC1/PC2 technical and donor; VX1 library size, VX2
+#    mitochondrial), so plotting them would show PC and VX at their worst while showing SPC
+#    at its best — the comparison would be rigged by the panel choice rather than by the
+#    bases. Ranking by marginal subclass R² and taking the top three gated components asks
+#    the same question of all three. What the naive PCs lose is then a property of the basis,
+#    not of the panels: PC1 is excluded because it is contaminated, and that is the finding.
+#
+#    No archetype overlay: the shared helper closes a polygon through the vertices, which is
+#    meaningless across four separately-fit simplices.
 # ---------------------------------------------------------------------------
 print('\nGenerating figures...')
-BASES = [
-    ('pc',  scores,     pc_cols,  'naive PCs — cell type and the technical gradient mixed'),
-    ('vx',  vx_scores,  vx_cols,  'varimax — nuisances quarantined, cell type spread thin'),
-    ('spc', spc_scores, spc_cols, 'PCs of the gated subspace — cell type back in two axes'),
-]
-panels = [(0, 1), (0, 2), (1, 2)]
-for basis, coords, cols, blurb in BASES:
-    pan = [(i, j, cols[i], cols[j]) for i, j in panels]
+BASES = [('pc',  scores,     pc_cols,  gate_pc),
+         ('vx',  vx_scores,  vx_cols,  gate_a),
+         ('spc', spc_scores, spc_cols, spc_cols)]
+for basis, coords, cols, gate in BASES:
+    ranked = inform[(inform['basis'] == basis) & inform['gate_pass']].sort_values(
+        'subclass_r2', ascending=False)
+    if len(ranked) < 3:
+        raise ValueError(f'{basis}: only {len(ranked)} gated components, need 3 for the panels')
+    top3 = list(ranked['component'])[:3]
+    r2s  = {c: ranked.set_index('component').loc[c, 'subclass_r2'] for c in top3}
+    idx  = [cols.index(c) for c in top3]
+    pan  = [(idx[0], idx[1], top3[0], top3[1]),
+            (idx[0], idx[2], top3[0], top3[2]),
+            (idx[1], idx[2], top3[1], top3[2])]
+    best = basis_df.set_index('basis').loc[basis]
+    blurb = (f'{basis.upper()} basis — the 3 gated components most informative about subclass '
+             f'(' + ', '.join(f'{c} R²={r2s[c]:.2f}' for c in top3) + f'); best plane '
+             f'{best["best_plane"]} keeps {best["purity_kept"]:.2f} of this basis\'s '
+             f'{best["subspace_purity"]:.3f} subspace purity')
+    print(f'  {basis}: panels on {top3}')
     save_archetype_scatter_pdf(
         coords, assign['archetype'].values, pan, aa=None,
-        title=f'Jorstad23 human IT joint embedding — {cols[0]}-{cols[2]}, by archetype '
-              f'({n_pooled} cells, 04 letters)\n{blurb}',
+        title=f'Jorstad23 human IT joint embedding, by archetype ({n_pooled} cells, '
+              f'04 letters)\n{blurb}',
         out_path=OUT_PDF[basis]['archetype'], label_order=ARCH_ORDER, cmap='tab20', s=1)
     save_archetype_scatter_pdf(
         coords, subclasses, pan, aa=None,
-        title=f'Jorstad23 human IT joint embedding — {cols[0]}-{cols[2]}, by subclass '
-              f'({n_pooled} cells)\n{blurb}',
-        out_path=OUT_PDF[basis]['subclass'],
+        title=f'Jorstad23 human IT joint embedding, by subclass ({n_pooled} cells)\n{blurb}',
+        out_path=OUT_PDF[basis]['subclass'], legend_title='subclass',
         label_order=[cfg['human_subclass'] for cfg in SUBCLASSES], cmap='tab10', s=1)
 
 # ---------------------------------------------------------------------------
-# 9. The geometry the archetype centroids form
+# 10. The geometry the archetype centroids form
 # ---------------------------------------------------------------------------
 P = centroids[list(ARC_SPC)]
 D = pd.DataFrame([[np.linalg.norm(P.loc[i] - P.loc[j]) for j in ARCH_ORDER]
@@ -913,7 +1035,7 @@ print(f'   occupied span: {len(interior)} bins, minimum {interior.min()} cells, 
       f'{int((interior == 0).sum())} empty')
 
 # ---------------------------------------------------------------------------
-# 10. The depth-order label map — the deliverable
+# 11. The depth-order label map — the deliverable
 # ---------------------------------------------------------------------------
 if ARC_ORDER_CURATED is None:
     print(UNCURATED_BANNER)
