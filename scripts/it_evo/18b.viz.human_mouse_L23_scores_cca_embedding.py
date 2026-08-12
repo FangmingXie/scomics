@@ -16,10 +16,13 @@ system per row. The two species' CCA axes are the matched cross-species canonica
 The human row uses the same mouse-derived scores as script 18 (computed on human cells by 06); the
 human PCHA vertices are the four human archetypes, labelled with primed letters (A'..D') to mark
 that they are *not* the mouse archetypes that define the scores. The mouse row uses the native
-mouse archetype scores (05) and the three mouse archetype vertices, labelled A/B/C. Styling
-mirrors 18/07 (SCORE_PCTILE=(2,98), symmetric DIFF_PCTILE=98, CMAP_B, CMAP_DIFF); color limits are
-computed per panel, so the same colormap means the same score range within a panel, not across
-species (the two rows are different measurements: imputed-on-human vs native-on-mouse).
+mouse archetype scores (05) and the three mouse archetype vertices. Both rows are shown reflected
+along CCA1 (axis labelled CCA1') so the two embeddings share one orientation, and the mouse
+vertices are relabelled A->C', B->B', C->A' to line up with the human layout — cosmetic only, the
+coordinates/scores/canonical correlation are unchanged. Color limits are clipped per panel to the
+5th-95th percentile of that panel's score (95th of |A-C| for the symmetric contrast), so the same
+colormap means the same score range within a panel, not across species (the two rows are different
+measurements: imputed-on-human vs native-on-mouse).
 
 Reads:
   local_data/res/it_evo/06.mouse_L23_archetype_scores_on_human_cells.tsv
@@ -76,9 +79,9 @@ PANELS    = [{'name': 'B', 'pos': 'B'},                   # columns: sequential 
 AA_RENAME_H = {'archetype_1': "D'", 'archetype_2': "C'", 'archetype_3': "B'", 'archetype_4': "A'"}
 AA_RENAME_M = {'archetype_1': "C'", 'archetype_2': "B'", 'archetype_3': "A'"}
 
-# --- parameters (07/18 styling, verbatim) ---
-SCORE_PCTILE = (2, 98)
-DIFF_PCTILE  = 98
+# --- parameters ---
+SCORE_PCTILE = (5, 95)   # clip sequential-score color range to 5th-95th pct
+DIFF_PCTILE  = 95        # clip A-C contrast color range to the 95th pct of |A-C|
 POINT_SIZE   = 3
 CMAP_B       = LinearSegmentedColormap.from_list('gray_C1', ['gainsboro', 'lightgray', 'C1'])
 CMAP_DIFF    = LinearSegmentedColormap.from_list('C0_gray_C2', ['C0', 'lightgray', 'C2'])
@@ -154,7 +157,8 @@ def draw_panel(ax, coords, vals, cmap, vlim, cbar, aa, aa_labels, r_cca, title, 
 # --- human row: mouse-derived scores on human cells, human CCA embedding (script 18) ---
 h_scores = pd.read_csv(IN_H_SCORES, sep='\t', index_col=0)
 h_index, h_cells, h_aa, h_labels, h_r = embed(
-    IN_H_COORDS, HUMAN_VX, IN_H_WEIGHTS, IN_H_AA, IN_H_INNER_CMP, IN_H_INNER_MEAN, AA_RENAME_H)
+    IN_H_COORDS, HUMAN_VX, IN_H_WEIGHTS, IN_H_AA, IN_H_INNER_CMP, IN_H_INNER_MEAN, AA_RENAME_H,
+    flip_cca1=True)   # reflect along CCA1 too, so both rows share the CCA1' orientation
 if not h_scores.index.equals(h_index):
     raise ValueError(f'Human cell index mismatch: {IN_H_SCORES} vs {IN_H_COORDS} — mouse scores '
                      f'and human coords must cover the same cells in the same order.')
@@ -170,7 +174,7 @@ if not m_scores.index.equals(m_index):
 
 rows = [
     {'species': 'Human Jorstad23 (mouse scores)', 'cells': h_cells, 'aa': h_aa,
-     'labels': h_labels, 'r': h_r, 'specs': panel_specs(h_scores), 'cca1_label': 'CCA1'},
+     'labels': h_labels, 'r': h_r, 'specs': panel_specs(h_scores), 'cca1_label': "CCA1'"},
     {'species': 'Mouse Cheng22 (native scores)', 'cells': m_cells, 'aa': m_aa,
      'labels': m_labels, 'r': m_r, 'specs': panel_specs(m_scores), 'cca1_label': "CCA1'"},
 ]
