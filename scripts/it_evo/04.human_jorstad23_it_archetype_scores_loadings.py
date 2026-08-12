@@ -70,6 +70,13 @@ SUBCLASSES = [
     # ARV_mean 0.029 at 3 -> 0.405 at 4. ARV_rep is elevated across the whole sweep
     # (0.227 at NOC=2, 0.203 at 3), i.e. L4 donors disagree more than L2/3's do at every
     # NOC — a property of the data, not of this choice, so it does not move the elbow.
+    # NOC=6 was also fitted and rejected (04b + report/it_evo/04.human_L4_num_archetype_3_vs_6.md).
+    # It is the sweep's best point on paper — effEV_mean 0.769 vs 0.630 here, ARV_mean back
+    # down to 0.200 — but it is also L4's structural ceiling (NOC <= NDIM+1 = 6), and the
+    # fitted vertices do not hold up: archetype_1 is 90% donor H18.30.002 inside the
+    # donor-balanced L4 IT_5, and archetype_6 is 100% L4 IT_8, a cluster that is itself 78%
+    # donor H19.30.001 and 59% linnarson. The six are a clean 3->2 bisection of these three,
+    # not new territory. Revisit only if Gate A is redone screening on Source as well as donor.
     {'token': 'L4',   'human_subclass': 'L4 IT',   'h5ad': 'jorstad23_human_WithinArea_L4IT.h5ad',
      'vx_cols': ['VX3', 'VX4', 'VX5', 'VX6', 'VX8', 'VX10'], 'noc': 3},
     # ARV_mean 0.024 / 0.101 / 0.596 at NOC 3 / 4 / 5 — the decisive break is 4->5, and
