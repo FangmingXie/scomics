@@ -244,6 +244,18 @@ DIR_FIRST, DIR_LAST = 'L2/3 IT', 'L6 IT'
 # distinction stays visible.
 # ===========================================================================
 ARC_SPC = ('SPC1', 'SPC2')
+
+# Which components each basis is plotted on. Default (no entry) is that basis's three most
+# subclass-informative GATED components, so every basis is shown at its best and panel 1 is
+# its best plane from the scan — see the figures section for why the first three would rig
+# the comparison instead.
+#
+# SPC is overridden to its own leading three. This is a legibility choice, not a measurement
+# one: SPC1-SPC2 is panel 1 either way (it is both the top-two-by-variance and the
+# top-two-by-subclass-R² pair), so the basis comparison is untouched. It only swaps the third
+# panel from SPC6 to SPC3, which carries far more archetype structure (archetype R² 0.789 vs
+# 0.482) and is where the horseshoe of a 1-D gradient is actually visible.
+PANEL_OVERRIDE = {'spc': ('SPC1', 'SPC2', 'SPC3')}
 # ===========================================================================
 
 # ===========================================================================
@@ -927,15 +939,25 @@ for basis, coords, cols, gate in BASES:
         'subclass_r2', ascending=False)
     if len(ranked) < 3:
         raise ValueError(f'{basis}: only {len(ranked)} gated components, need 3 for the panels')
-    top3 = list(ranked['component'])[:3]
-    r2s  = {c: ranked.set_index('component').loc[c, 'subclass_r2'] for c in top3}
+    by_component = ranked.set_index('component')
+    if basis in PANEL_OVERRIDE:
+        top3 = list(PANEL_OVERRIDE[basis])
+        bad  = [c for c in top3 if c not in by_component.index]
+        if bad:
+            raise ValueError(f'PANEL_OVERRIDE[{basis!r}] names {bad}, which are not gated '
+                             f'components of that basis')
+        note = ' (leading three, by variance)'
+    else:
+        top3 = list(ranked['component'])[:3]
+        note = ''
+    r2s  = {c: by_component.loc[c, 'subclass_r2'] for c in top3}
     idx  = [cols.index(c) for c in top3]
     pan  = [(idx[0], idx[1], top3[0], top3[1]),
             (idx[0], idx[2], top3[0], top3[2]),
             (idx[1], idx[2], top3[1], top3[2])]
     best = basis_df.set_index('basis').loc[basis]
-    blurb = (f'{basis.upper()} basis — the 3 gated components most informative about subclass '
-             f'(' + ', '.join(f'{c} R²={r2s[c]:.2f}' for c in top3) + f'); best plane '
+    blurb = (f'{basis.upper()} basis — gated components{note} '
+             f'(' + ', '.join(f'{c} subclass R²={r2s[c]:.2f}' for c in top3) + f'); best plane '
              f'{best["best_plane"]} keeps {best["purity_kept"]:.2f} of this basis\'s '
              f'{best["subspace_purity"]:.3f} subspace purity')
     print(f'  {basis}: panels on {top3}')
