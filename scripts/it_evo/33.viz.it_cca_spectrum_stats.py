@@ -1,4 +1,4 @@
-"""Top-5 CCA spectrum statistics per IT subclass — canonical r, permutation z, variance explained.
+"""Top-4 CCA spectrum statistics per IT subclass — canonical r, permutation z, variance explained.
 
 One row of four line panels summarizing the cross-species CCA (script 16) for every IT subclass
 (L2/3, L4, L5IT, L6IT), so the strength and subspace coverage of the top canonical axes can be
@@ -9,8 +9,16 @@ compared across layers and read as they decay across components:
   * var(human), var(mouse) — the fraction of that species' Gate-A VX subspace variance the
                  canonical axis carries at the CELL level (see below).
 
-x-axis is the component index CCA1..min(5, k); one colored line per subclass. L4 and L6IT have
-only 4 canonical components (min gate size), so their lines stop at CCA4.
+The first four panels are line plots over the component index CCA1..4, one colored line per
+subclass. Every IT subclass has at least 4 canonical components (min gate size), so all are shown
+to the same depth (4). A fifth panel is a per-subclass bar of the SUBSPACE OVERLAP.
+
+SUBSPACE OVERLAP. The canonical correlations r_i are the cosines of the principal angles between
+the two species' Gate-A gene-loading subspaces, so cos²θ_i = r_i². Their sum Σcos²θ = Σ r_i² is a
+single scalar per subclass: 0 = orthogonal subspaces, k = identical. Here it is summed over the
+SAME top 4 components shown (recomputed from the spectrum r, not 16's all-component `subspace`
+row), so every subclass uses k=4 and the bars are directly comparable. The bar shows the
+normalized Σcos²θ / 4 (mean squared canonical correlation), annotated with the raw Σcos²θ.
 
 VARIANCE EXPLAINED (identical definition to script 21's `ev_fraction`). A canonical axis is a
 unit direction â in a species' Gate-A VX space. Its explained-variance fraction is the CELL-level
@@ -33,7 +41,8 @@ Reads (per subclass TOKEN):
   local_data/res/it/{19,21,23,25}.cheng22_<TOKEN>_varimax_coords.tsv
 Outputs:
   local_data/fig/it_evo/33.it_cca_stats.pdf
-  local_data/res/it_evo/33.it_cca_stats.tsv   (tidy: subclass, component, r, z, var_*)
+  local_data/res/it_evo/33.it_cca_stats.tsv            (tidy: subclass, component, r, z, var_*)
+  local_data/res/it_evo/33.it_cca_subspace_overlap.tsv (subclass, k, sumcos2, sumcos2_frac)
 """
 
 import os
@@ -64,7 +73,7 @@ SUBCLASSES = [
      'mouse_vx': ['VX1', 'VX2', 'VX9', 'VX10'],
      'mouse_coords': '25.cheng22_L6IT_varimax_coords.tsv'},
 ]
-TOP_N       = 5           # plot the first min(TOP_N, k) canonical components
+TOP_N       = 4           # first TOP_N canonical components (every subclass has >= 4)
 R_MATCH_TOL = 1e-9        # spectrum r vs the weights' canonical_r (both from 16)
 # panels: (tidy-column, y-axis label); one line per subclass, x = component index
 METRICS = [('r', 'canonical correlation  r'),
@@ -76,8 +85,9 @@ METRICS = [('r', 'canonical correlation  r'),
 RES_DIR    = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it_evo')
 IT_RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 FIG_DIR    = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it_evo')
-OUT_PDF    = os.path.join(FIG_DIR, '33.it_cca_stats.pdf')
-OUT_TSV    = os.path.join(RES_DIR, '33.it_cca_stats.tsv')
+OUT_PDF     = os.path.join(FIG_DIR, '33.it_cca_stats.pdf')
+OUT_TSV     = os.path.join(RES_DIR, '33.it_cca_stats.tsv')
+OUT_TSV_SUB = os.path.join(RES_DIR, '33.it_cca_subspace_overlap.tsv')
 
 os.makedirs(FIG_DIR, exist_ok=True)
 
@@ -102,8 +112,9 @@ def ev_fraction(coords_path, vx_cols, wdf, k):
 def stats_for(cfg):
     """Tidy per-component stats for one subclass: r, z (16's spectrum) + cell-level EV per species."""
     token = cfg['token']
-    spec = pd.read_csv(os.path.join(RES_DIR, f'16.{token}_axis_cca_spectrum.tsv'), sep='\t')
-    spec = spec[spec['component'].str.startswith('CCA')].set_index('component')
+    spec_full = pd.read_csv(os.path.join(RES_DIR, f'16.{token}_axis_cca_spectrum.tsv'),
+                            sep='\t').set_index('component')
+    spec = spec_full[spec_full.index.str.startswith('CCA')]
     wdf_h = pd.read_csv(os.path.join(RES_DIR, f'16.{token}_axis_cca_weights_human.tsv'),
                         sep='\t', index_col=0)
     wdf_m = pd.read_csv(os.path.join(RES_DIR, f'16.{token}_axis_cca_weights_mouse.tsv'),
@@ -125,19 +136,28 @@ def stats_for(cfg):
              'r': float(spec.loc[f'CCA{i}', 'r']), 'z': float(spec.loc[f'CCA{i}', 'z']),
              'var_explained_human': ev_h[i - 1], 'var_explained_mouse': ev_m[i - 1]}
             for i in range(1, k + 1)]
-    print(f'  {cfg["label"]:5s}: top {k}/{len(spec)} components; '
-          f'CCA1 r={rows[0]["r"]:.3f}, EV human {ev_h[0]:.0%} / mouse {ev_m[0]:.0%}')
-    return pd.DataFrame(rows)
+    # subspace overlap over the SAME top-k components shown: Σcos²θ = Σ r_i² (i=1..k), frac = /k.
+    # Recomputed over top k (not 16's all-component `subspace` row) so every subclass uses k=TOP_N
+    # and the bars are directly comparable.
+    sumcos2 = float(sum(r['r'] ** 2 for r in rows))
+    overlap = {'subclass': cfg['label'], 'k': k, 'sumcos2': sumcos2, 'sumcos2_frac': sumcos2 / k}
+    print(f'  {cfg["label"]:5s}: top {k}/{len(spec)} components; CCA1 r={rows[0]["r"]:.3f}, '
+          f'EV human {ev_h[0]:.0%} / mouse {ev_m[0]:.0%}; '
+          f'Σcos²θ(top{k})={sumcos2:.3f} (/{k}={overlap["sumcos2_frac"]:.3f})')
+    return pd.DataFrame(rows), overlap
 
 
-print('--- IT CCA spectrum stats (r, z, cell-level variance explained), top 5 components ---')
-tables = [stats_for(cfg) for cfg in SUBCLASSES]
-tidy = pd.concat(tables, ignore_index=True)
+print('--- IT CCA spectrum stats (r, z, cell-level variance explained), top 4 components ---')
+results = [stats_for(cfg) for cfg in SUBCLASSES]
+tidy = pd.concat([r[0] for r in results], ignore_index=True)
+sub_df = pd.DataFrame([r[1] for r in results])
 tidy.to_csv(OUT_TSV, sep='\t', index=False)
+sub_df.to_csv(OUT_TSV_SUB, sep='\t', index=False)
 print(f'  Saved {OUT_TSV}')
+print(f'  Saved {OUT_TSV_SUB}')
 
 plt.rcParams['pdf.fonttype'] = 42
-fig, axes = plt.subplots(1, len(METRICS), figsize=(5.0 * len(METRICS), 4.2))
+fig, axes = plt.subplots(1, len(METRICS) + 1, figsize=(4.6 * (len(METRICS) + 1), 4.2))
 xmax = int(tidy['component_idx'].max())
 for ax, (col, ylabel) in zip(axes, METRICS):
     for cfg in SUBCLASSES:
@@ -154,6 +174,20 @@ for ax, (col, ylabel) in zip(axes, METRICS):
         ax.axhline(0, color='0.8', lw=0.6, zorder=0)
     ax.margins(y=0.08)
     sns.despine(ax=ax)
+
+# fifth panel: per-subclass subspace overlap Σcos²θ / k (bar), annotated with raw Σcos²θ
+axb = axes[-1]
+colors = [cfg['color'] for cfg in SUBCLASSES]
+axb.bar(range(len(sub_df)), sub_df['sumcos2_frac'], color=colors, alpha=0.85)
+for x, frac, raw in zip(range(len(sub_df)), sub_df['sumcos2_frac'], sub_df['sumcos2']):
+    axb.text(x, frac, f'Σ={raw:.2f}', ha='center', va='bottom', fontsize=7)
+axb.set_xticks(range(len(sub_df)))
+axb.set_xticklabels(sub_df['subclass'])
+axb.set_xlabel('subclass')
+axb.set_ylabel('subspace overlap  Σcos²θ / k')
+axb.margins(y=0.12)
+sns.despine(ax=axb)
+
 axes[0].legend(title='subclass', fontsize=8, frameon=False)
 fig.suptitle('Cross-species CCA per IT subclass  (universe: hvg_intersect)', fontsize=12)
 fig.tight_layout()
