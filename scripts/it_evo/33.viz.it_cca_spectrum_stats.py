@@ -15,10 +15,10 @@ to the same depth (4). A fifth panel is a per-subclass bar of the SUBSPACE OVERL
 
 SUBSPACE OVERLAP. The canonical correlations r_i are the cosines of the principal angles between
 the two species' Gate-A gene-loading subspaces, so cos²θ_i = r_i². Their sum Σcos²θ = Σ r_i² is a
-single scalar per subclass: 0 = orthogonal subspaces, k = identical. Here it is summed over the
-SAME top 4 components shown (recomputed from the spectrum r, not 16's all-component `subspace`
-row), so every subclass uses k=4 and the bars are directly comparable. The bar shows the
-normalized Σcos²θ / 4 (mean squared canonical correlation), annotated with the raw Σcos²θ.
+single scalar per subclass: 0 = orthogonal subspaces, 4 = identical over these components. Summed
+over the SAME top 4 components shown (recomputed from the spectrum r, not 16's all-component
+`subspace` row); every subclass uses the same 4 components, so the raw totals are directly
+comparable and the bar shows Σcos²θ itself (no normalization).
 
 VARIANCE EXPLAINED (identical definition to script 21's `ev_fraction`). A canonical axis is a
 unit direction â in a species' Gate-A VX space. Its explained-variance fraction is the CELL-level
@@ -42,7 +42,7 @@ Reads (per subclass TOKEN):
 Outputs:
   local_data/fig/it_evo/33.it_cca_stats.pdf
   local_data/res/it_evo/33.it_cca_stats.tsv            (tidy: subclass, component, r, z, var_*)
-  local_data/res/it_evo/33.it_cca_subspace_overlap.tsv (subclass, k, sumcos2, sumcos2_frac)
+  local_data/res/it_evo/33.it_cca_subspace_overlap.tsv (subclass, k, sumcos2)
 """
 
 import os
@@ -140,10 +140,9 @@ def stats_for(cfg):
     # Recomputed over top k (not 16's all-component `subspace` row) so every subclass uses k=TOP_N
     # and the bars are directly comparable.
     sumcos2 = float(sum(r['r'] ** 2 for r in rows))
-    overlap = {'subclass': cfg['label'], 'k': k, 'sumcos2': sumcos2, 'sumcos2_frac': sumcos2 / k}
+    overlap = {'subclass': cfg['label'], 'k': k, 'sumcos2': sumcos2}
     print(f'  {cfg["label"]:5s}: top {k}/{len(spec)} components; CCA1 r={rows[0]["r"]:.3f}, '
-          f'EV human {ev_h[0]:.0%} / mouse {ev_m[0]:.0%}; '
-          f'Σcos²θ(top{k})={sumcos2:.3f} (/{k}={overlap["sumcos2_frac"]:.3f})')
+          f'EV human {ev_h[0]:.0%} / mouse {ev_m[0]:.0%}; Σcos²θ(top{k})={sumcos2:.3f}')
     return pd.DataFrame(rows), overlap
 
 
@@ -175,16 +174,16 @@ for ax, (col, ylabel) in zip(axes, METRICS):
     ax.margins(y=0.08)
     sns.despine(ax=ax)
 
-# fifth panel: per-subclass subspace overlap Σcos²θ / k (bar), annotated with raw Σcos²θ
+# fifth panel: per-subclass total subspace overlap Σcos²θ over the top 4 components (bar)
 axb = axes[-1]
 colors = [cfg['color'] for cfg in SUBCLASSES]
-axb.bar(range(len(sub_df)), sub_df['sumcos2_frac'], color=colors, alpha=0.85)
-for x, frac, raw in zip(range(len(sub_df)), sub_df['sumcos2_frac'], sub_df['sumcos2']):
-    axb.text(x, frac, f'Σ={raw:.2f}', ha='center', va='bottom', fontsize=7)
+axb.bar(range(len(sub_df)), sub_df['sumcos2'], color=colors, alpha=0.85)
+for x, raw in zip(range(len(sub_df)), sub_df['sumcos2']):
+    axb.text(x, raw, f'{raw:.2f}', ha='center', va='bottom', fontsize=7)
 axb.set_xticks(range(len(sub_df)))
 axb.set_xticklabels(sub_df['subclass'])
 axb.set_xlabel('subclass')
-axb.set_ylabel('subspace overlap  Σcos²θ / k')
+axb.set_ylabel('subspace overlap  Σcos²θ (top 4)')
 axb.margins(y=0.12)
 sns.despine(ax=axb)
 
