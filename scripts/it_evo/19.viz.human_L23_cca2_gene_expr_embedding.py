@@ -1,6 +1,6 @@
 """Top-CCA2 gene expression on the human L2/3 CCA1×CCA2 embedding (L2/3 only, plots only).
 
-Companion to script 18. Same human cell embedding — each Jorstad23 L2/3 cell positioned by
+Companion to script 18b. Same human cell embedding — each Jorstad23 L2/3 cell positioned by
 its projection onto the conserved human CCA1/CCA2 canonical directions (script 16), with the
 PCHA archetype vertices (04) overlaid — but here the cells are colored by the ln(CPM+1)
 expression of the genes that contribute most to CCA2 (SORCS3, KCNH7, SGCZ, …).
@@ -63,7 +63,7 @@ os.makedirs(FIG_DIR, exist_ok=True)
 
 
 def cca_embedding():
-    """Human cells and PCHA archetype vertices projected onto CCA1×CCA2 (as script 18)."""
+    """Human cells and PCHA archetype vertices projected onto CCA1×CCA2 (as script 18b)."""
     vx_df = pd.read_csv(IN_VX_COORDS, sep='\t', index_col=0)
     weights = pd.read_csv(IN_W_HUMAN, sep='\t', index_col=0)
     aa_df = pd.read_csv(IN_AA, sep='\t', index_col=0)

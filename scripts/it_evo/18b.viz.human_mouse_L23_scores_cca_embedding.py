@@ -1,8 +1,9 @@
 """Mouse L2/3 archetype scores on the conserved CCA1xCCA2 embedding, human AND mouse (plots only).
 
-Script 18 rendered the mouse-derived L2/3 scores (score_B and the A-C contrast) on the *human*
-CCA1xCCA2 embedding. This script replots those two panels and adds the matching pair for *mouse*
-cells positioned on the *mouse* CCA1xCCA2 embedding, colored by the native mouse archetype scores.
+Two mouse-derived L2/3 score readouts (score_B and the A-C contrast) are shown on the conserved
+CCA1xCCA2 embedding for both species: the human row places Jorstad23 cells on the *human* embedding
+(coloured by the mouse-derived scores computed on human cells by 06), and the mouse row places
+Cheng22 cells on the *mouse* embedding (coloured by the native mouse archetype scores, 05).
 The result is a 2x2 grid: rows are species (top = human Jorstad23, bottom = mouse Cheng22),
 columns are the two score readouts, shown with the published primed labels (Score B', Score
 C'-A'; internal score_B and score_A-score_C, via ARCH_RELABEL {A:C', B:B', C:A'}).

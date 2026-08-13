@@ -38,8 +38,8 @@ Reads:
   local_data/res/it_evo/30.L23_axis_cca_weights_{human,mouse}_hvg4000<SUFFIX>.tsv
   local_data/res/it_evo/05.mouse_L23_archetype_markers.tsv             (UNCHANGED)
   data/human_mouse_orthologs.tsv
-Outputs:
-  local_data/fig/it_evo/31.human_mouse_L23_gene_loadings_CCA{1,2}_hvg4000<SUFFIX>.pdf
+Outputs (CCA1 + CCA2 as the two panels of one figure):
+  local_data/fig/it_evo/31.human_mouse_L23_gene_loadings_hvg4000<SUFFIX>.pdf
 """
 
 import os
@@ -82,7 +82,7 @@ FLIER_SIZE   = 3.0                                  # outlier marker size (point
 SIG_LEVELS   = [(0.001, '***'), (0.01, '**'), (0.05, '*')]   # MWU vs "other"; else 'ns'
 N_PERM       = 20000                                # gene-label permutations (mirror 24b)
 PERM_SEED    = 0                                    # mirror 24b's seed
-R_MATCH_TOL  = 1e-6                                 # panel r vs canonical r (see make_joint_figure)
+R_MATCH_TOL  = 1e-6                                 # panel r vs canonical r (see draw_joint)
 
 # Marker coverage on hvg_union is a fixed analytic target, not an observation (see docstring).
 EXPECT_ARCH_COUNTS = {'hvg_union': {'A': 82, 'B': 35, 'C': 60}}
@@ -98,8 +98,7 @@ IN_W_HUMAN    = os.path.join(RES_DIR, f'30.L23_axis_cca_weights_human{TAG}{SUFFI
 IN_W_MOUSE    = os.path.join(RES_DIR, f'30.L23_axis_cca_weights_mouse{TAG}{SUFFIX}.tsv')
 IN_MARKERS    = os.path.join(RES_DIR, '05.mouse_L23_archetype_markers.tsv')
 IN_ORTHOLOGS  = os.path.join(PROJECT_ROOT, 'data', 'human_mouse_orthologs.tsv')
-OUT_PDF_CCA1  = os.path.join(FIG_DIR, f'31.human_mouse_L23_gene_loadings_CCA1{TAG}{SUFFIX}.pdf')
-OUT_PDF_CCA2  = os.path.join(FIG_DIR, f'31.human_mouse_L23_gene_loadings_CCA2{TAG}{SUFFIX}.pdf')
+OUT_PDF       = os.path.join(FIG_DIR, f'31.human_mouse_L23_gene_loadings{TAG}{SUFFIX}.pdf')
 
 os.makedirs(FIG_DIR, exist_ok=True)
 
@@ -249,8 +248,8 @@ def annotate_sig(ax, vals, orientation):
                     fontsize=8, color='0.25')
 
 
-def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
-    """Scatter of (mouse, human) loadings with per-group boxplots below-x and along-y."""
+def draw_joint(subfig, ms, hs, axis_label, sig):
+    """Draw one axis' (mouse, human) joint plot into `subfig`; returns the panel Pearson r."""
     r = float(np.corrcoef(ms, hs)[0, 1])
     if not abs(abs(r) - sig['r_cca']) < R_MATCH_TOL:
         raise ValueError(
@@ -261,13 +260,11 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
     top_idx = np.argsort(np.abs(ms * hs))[::-1][:TOP_N_LABEL]
     lim = np.array([min(ms.min(), hs.min()), max(ms.max(), hs.max())]) * 1.08
 
-    plt.rcParams['pdf.fonttype'] = 42
-    fig = plt.figure(figsize=(8, 8))
-    gs = fig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[4, 1],
-                          wspace=0.04, hspace=0.04)
-    ax_main = fig.add_subplot(gs[0, 0])
-    ax_boxx = fig.add_subplot(gs[1, 0], sharex=ax_main)   # below x-axis
-    ax_boxy = fig.add_subplot(gs[0, 1], sharey=ax_main)   # along y-axis
+    gs = subfig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[4, 1],
+                             wspace=0.04, hspace=0.04)
+    ax_main = subfig.add_subplot(gs[0, 0])
+    ax_boxx = subfig.add_subplot(gs[1, 0], sharex=ax_main)   # below x-axis
+    ax_boxy = subfig.add_subplot(gs[0, 1], sharey=ax_main)   # along y-axis
 
     # --- main scatter (identical to 24b) ---
     n_other = int((letters == '').sum())
@@ -323,9 +320,6 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
 
     sns.despine(ax=ax_boxx)
     sns.despine(ax=ax_boxy)
-
-    fig.savefig(out_pdf, bbox_inches='tight', dpi=300)
-    plt.close(fig)
     return r
 
 
@@ -351,9 +345,13 @@ print('  archetype vs "other" bulk (Mann-Whitney U, rank-biserial; descriptive, 
 report_mwu('CCA1', ms_cca1, hs_cca1)
 report_mwu('CCA2', ms_cca2, hs_cca2)
 
-r1 = make_joint_figure(ms_cca1, hs_cca1, 'CCA1', OUT_PDF_CCA1, sig['CCA1'])
-r2 = make_joint_figure(ms_cca2, hs_cca2, 'CCA2', OUT_PDF_CCA2, sig['CCA2'])
+plt.rcParams['pdf.fonttype'] = 42
+fig = plt.figure(figsize=(16, 8))
+subfigs = fig.subfigures(1, 2, wspace=0.07)
+r1 = draw_joint(subfigs[0], ms_cca1, hs_cca1, 'CCA1', sig['CCA1'])
+r2 = draw_joint(subfigs[1], ms_cca2, hs_cca2, 'CCA2', sig['CCA2'])
+fig.savefig(OUT_PDF, bbox_inches='tight', dpi=300)
+plt.close(fig)
 print(f'  panel r: CCA1 {r1:.3f}, CCA2 {r2:.3f}')
-print(f'  Saved {OUT_PDF_CCA1}')
-print(f'  Saved {OUT_PDF_CCA2}')
+print(f'  Saved {OUT_PDF}')
 print('\nDone.')

@@ -1,22 +1,18 @@
-"""Script 24 with the marginals drawn as boxplots instead of histogram + KDE curves.
+"""Mouse-vs-human ortholog gene-loading joint plots on the conserved CCA axes (L2/3, boxplots).
 
-Identical scatter, gene universe, canonical projection and permutation test as
-`24.viz.human_mouse_L23_gene_loadings_marginal.py` -- only the two marginal panels differ:
+Scatter of per-gene mouse-vs-human canonical projections, coloured by mouse archetype, with
+one horizontal boxplot per group below the x-axis and one vertical boxplot per group along the
+y-axis. The CCA1 and CCA2 joint plots are packed side-by-side into a single two-panel PDF.
 
-  * 24  -- density histogram (faint bars) + gaussian_kde curve per archetype.
-  * 24b -- one horizontal boxplot per group below the x-axis and one vertical boxplot per
-           group along the y-axis.
-
-Boxplots buy three things the KDE version could not give:
-  1. No bandwidth. KDE_BW=0.35 was doing real work at n=8 (archetype B under
-     `hvg_intersect`); a box has no smoothing parameter to tune.
+Boxplots (rather than a density histogram + gaussian_kde per archetype) buy three things:
+  1. No bandwidth to tune (a KDE_BW was doing real work at n=8, archetype B under
+     `hvg_intersect`); a box has no smoothing parameter.
   2. The **"other" genes are drawn as a fourth, gray box**, so each archetype is read
      against the bulk of the transcriptome rather than against the other two archetypes.
-     That is the comparison the "which pole does this archetype sit on" claim needs, and 24
-     omits it entirely.
+     That is the comparison the "which pole does this archetype sit on" claim needs.
   3. Medians and IQRs are directly comparable across groups of very different n.
 
-The trade-off is that multimodality is invisible in a box; when that matters, read 24.
+The trade-off is that multimodality is invisible in a box.
 
 A Mann-Whitney U of each archetype against the "other" bulk is printed to stdout per axis and
 per species, and annotated on the figure as significance stars beside each archetype's box
@@ -29,8 +25,15 @@ Archetypes are keyed internally by A/B/C (= mouse archetype_1/2/3) for marker id
 coloring, but *displayed* with the published primed labels via ARCH_RELABEL {A:C', B:B', C:A'}
 and ordered A', B', C' (matching scripts/it/41,48,50). Below, "A/B/C" names the internal keys.
 
-Reads / writes the same inputs as 24, with `24b.` outputs:
-  local_data/fig/it_evo/24b.human_mouse_L23_gene_loadings_CCA{1,2}<SUFFIX>.pdf
+Reads (paths switch with UNIVERSE):
+  local_data/res/it_evo/26.{human,mouse}_L23_varimax_loadings_full.tsv  (expanded)
+  local_data/res/it_evo/02.human_L23_varimax_loadings.tsv               (HVG membership)
+  local_data/res/it/19.cheng22_L23_varimax_loadings.tsv                 (HVG membership)
+  local_data/res/it_evo/16.L23_axis_cca_weights_{human,mouse}<SUFFIX>.tsv
+  local_data/res/it_evo/05.mouse_L23_archetype_markers.tsv
+  data/human_mouse_orthologs.tsv
+Outputs (CCA1 + CCA2 as the two panels of one figure):
+  local_data/fig/it_evo/24b.human_mouse_L23_gene_loadings<SUFFIX>.pdf
 """
 
 import os
@@ -70,7 +73,7 @@ FLIER_SIZE   = 3.0                                  # outlier marker size (point
 SIG_LEVELS   = [(0.001, '***'), (0.01, '**'), (0.05, '*')]   # MWU vs "other"; else 'ns'
 N_PERM       = 20000                                # gene-label permutations (mirror script 21)
 PERM_SEED    = 0                                    # mirror script 21's SEED so p-values match exactly
-R_MATCH_TOL  = 1e-6                                 # panel r vs canonical r (see make_joint_figure)
+R_MATCH_TOL  = 1e-6                                 # panel r vs canonical r (see draw_joint)
 
 # --- file paths ---
 RES_DIR       = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it_evo')
@@ -84,8 +87,7 @@ IN_W_HUMAN    = os.path.join(RES_DIR, f'16.L23_axis_cca_weights_human{SUFFIX}.ts
 IN_W_MOUSE    = os.path.join(RES_DIR, f'16.L23_axis_cca_weights_mouse{SUFFIX}.tsv')
 IN_MARKERS    = os.path.join(RES_DIR, '05.mouse_L23_archetype_markers.tsv')
 IN_ORTHOLOGS  = os.path.join(PROJECT_ROOT, 'data', 'human_mouse_orthologs.tsv')
-OUT_PDF_CCA1  = os.path.join(FIG_DIR, f'24b.human_mouse_L23_gene_loadings_CCA1{SUFFIX}.pdf')
-OUT_PDF_CCA2  = os.path.join(FIG_DIR, f'24b.human_mouse_L23_gene_loadings_CCA2{SUFFIX}.pdf')
+OUT_PDF       = os.path.join(FIG_DIR, f'24b.human_mouse_L23_gene_loadings{SUFFIX}.pdf')
 
 os.makedirs(FIG_DIR, exist_ok=True)
 
@@ -222,8 +224,8 @@ def annotate_sig(ax, vals, orientation):
                     fontsize=8, color='0.25')
 
 
-def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
-    """Scatter of (mouse, human) loadings with per-group boxplots below-x and along-y."""
+def draw_joint(subfig, ms, hs, axis_label, sig):
+    """Draw one axis' (mouse, human) joint plot into `subfig`; returns the panel Pearson r."""
     r = float(np.corrcoef(ms, hs)[0, 1])
     if not abs(abs(r) - sig['r_cca']) < R_MATCH_TOL:
         raise ValueError(
@@ -234,13 +236,11 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
     top_idx = np.argsort(np.abs(ms * hs))[::-1][:TOP_N_LABEL]
     lim = np.array([min(ms.min(), hs.min()), max(ms.max(), hs.max())]) * 1.08
 
-    plt.rcParams['pdf.fonttype'] = 42
-    fig = plt.figure(figsize=(8, 8))
-    gs = fig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[4, 1],
-                          wspace=0.04, hspace=0.04)
-    ax_main = fig.add_subplot(gs[0, 0])
-    ax_boxx = fig.add_subplot(gs[1, 0], sharex=ax_main)   # below x-axis
-    ax_boxy = fig.add_subplot(gs[0, 1], sharey=ax_main)   # along y-axis
+    gs = subfig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[4, 1],
+                             wspace=0.04, hspace=0.04)
+    ax_main = subfig.add_subplot(gs[0, 0])
+    ax_boxx = subfig.add_subplot(gs[1, 0], sharex=ax_main)   # below x-axis
+    ax_boxy = subfig.add_subplot(gs[0, 1], sharey=ax_main)   # along y-axis
 
     # --- main scatter (identical to 24) ---
     n_other = int((letters == '').sum())
@@ -295,9 +295,6 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
 
     sns.despine(ax=ax_boxx)
     sns.despine(ax=ax_boxy)
-
-    fig.savefig(out_pdf, bbox_inches='tight', dpi=300)
-    plt.close(fig)
     return r
 
 
@@ -320,9 +317,13 @@ print('  archetype vs "other" bulk (Mann-Whitney U, rank-biserial; descriptive, 
 report_mwu('CCA1', ms_cca1, hs_cca1)
 report_mwu('CCA2', ms_cca2, hs_cca2)
 
-r1 = make_joint_figure(ms_cca1, hs_cca1, 'CCA1', OUT_PDF_CCA1, sig['CCA1'])
-r2 = make_joint_figure(ms_cca2, hs_cca2, 'CCA2', OUT_PDF_CCA2, sig['CCA2'])
+plt.rcParams['pdf.fonttype'] = 42
+fig = plt.figure(figsize=(16, 8))
+subfigs = fig.subfigures(1, 2, wspace=0.07)
+r1 = draw_joint(subfigs[0], ms_cca1, hs_cca1, 'CCA1', sig['CCA1'])
+r2 = draw_joint(subfigs[1], ms_cca2, hs_cca2, 'CCA2', sig['CCA2'])
+fig.savefig(OUT_PDF, bbox_inches='tight', dpi=300)
+plt.close(fig)
 print(f'  panel r: CCA1 {r1:.3f}, CCA2 {r2:.3f}')
-print(f'  Saved {OUT_PDF_CCA1}')
-print(f'  Saved {OUT_PDF_CCA2}')
+print(f'  Saved {OUT_PDF}')
 print('\nDone.')
