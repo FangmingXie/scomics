@@ -152,7 +152,7 @@ def main():
     name2idx = {g: i for i, g in enumerate(adata.var_names)}
 
     xpos = np.arange(len(stages))
-    fig, axes = plt.subplots(1, len(PANELS), figsize=(4.6 * len(PANELS), 3.8),
+    fig, axes = plt.subplots(1, len(PANELS), figsize=(2.9 * len(PANELS), 3.8),
                              squeeze=False, sharey=True)
 
     all_stats = []
