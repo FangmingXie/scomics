@@ -25,6 +25,10 @@ archetypes are not independent of each other and no multiplicity correction is a
 n_other in the thousands, even a small median shift reaches ***, so read the stars alongside
 the rank-biserial effect sizes on stdout, not on their own.
 
+Archetypes are keyed internally by A/B/C (= mouse archetype_1/2/3) for marker identity and
+coloring, but *displayed* with the published primed labels via ARCH_RELABEL {A:C', B:B', C:A'}
+and ordered A', B', C' (matching scripts/it/41,48,50). Below, "A/B/C" names the internal keys.
+
 Reads / writes the same inputs as 24, with `24b.` outputs:
   local_data/fig/it_evo/24b.human_mouse_L23_gene_loadings_CCA{1,2}<SUFFIX>.pdf
 """
@@ -50,7 +54,12 @@ HUMAN_VX     = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']
 MOUSE_VX     = ['VX1', 'VX2', 'VX5', 'VX7', 'VX8', 'VX9']
 MOUSE_NOC    = 3
 ALPHABET     = ['A', 'B', 'C', 'D', 'E', 'F']
-ARCH_COLORS  = {'A': 'C0', 'B': 'C1', 'C': 'C2'}   # A->C0, B->C1, C->C2
+# Internal keys A/B/C (= archetype_1/2/3) are display-relabeled for publication, matching
+# scripts/it/41,48,50. Only labels change; keys drive all computation and coloring.
+ARCH_RELABEL = {'A': "C'", 'B': "B'", 'C': "A'"}   # internal -> displayed
+ARCH_ORDER   = ['C', 'B', 'A']                     # so labels read A', B', C'
+# color follows the DISPLAYED label: A'->C0, B'->C1, C'->C2 (so internal C->C0, B->C1, A->C2)
+ARCH_COLORS  = {'A': 'C2', 'B': 'C1', 'C': 'C0'}   # internal key -> color
 BASE_COLOR   = '#bdbdbd'                            # "other" genes: neutral gray
 POINT_SIZE   = {'hvg_intersect': 10, 'hvg_union': 4}[UNIVERSE]
 BASE_ALPHA   = {'hvg_intersect': 1.0, 'hvg_union': 0.45}[UNIVERSE]
@@ -144,7 +153,7 @@ letters = np.array([gene2arch.get(g, '') for g in shared['mouse_symbol'].values]
 
 # Group order runs "other" first so it sits nearest the scatter in both marginals and reads
 # as the baseline the archetypes are compared against.
-GROUPS = [('other', BASE_COLOR)] + [(L, c) for L, c in ARCH_COLORS.items()]
+GROUPS = [('other', BASE_COLOR)] + [(L, ARCH_COLORS[L]) for L in ARCH_ORDER]
 
 
 def draw_boxes(ax, values_by_group, orientation):
@@ -193,8 +202,8 @@ def report_mwu(axis_label, ms, hs):
     """Print the same test the figure annotates, with effect sizes the stars cannot show."""
     for species, vals in (('mouse', ms), ('human', hs)):
         stats = mwu_vs_other(vals)
-        parts = [f'{L}: med {np.median(group_values(vals)[L]):+.3f} rb {rb:+.2f} '
-                 f'p {p:.1e} {stars(p)}' for L, (p, rb) in stats.items()]
+        parts = [f'{ARCH_RELABEL[L]}: med {np.median(group_values(vals)[L]):+.3f} rb {stats[L][1]:+.2f} '
+                 f'p {stats[L][0]:.1e} {stars(stats[L][0])}' for L in ARCH_ORDER if L in stats]
         print(f'    {axis_label} {species:5s} '
               f'(bulk med {np.median(group_values(vals)["other"]):+.3f})  ' + ' | '.join(parts))
 
@@ -238,10 +247,11 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
     ax_main.scatter(ms[letters == ''], hs[letters == ''], s=POINT_SIZE, c=BASE_COLOR,
                     linewidths=0, alpha=BASE_ALPHA, rasterized=True,
                     label=f'other (n={n_other})')
-    for L, color in ARCH_COLORS.items():
+    for L in ARCH_ORDER:
+        color = ARCH_COLORS[L]
         m = letters == L
         ax_main.scatter(ms[m], hs[m], s=POINT_SIZE + ARCH_BUMP, c=color, linewidths=0, alpha=0.9,
-                        label=f'mouse archetype {L} (n={int(m.sum())})', zorder=3)
+                        label=f'mouse archetype {ARCH_RELABEL[L]} (n={int(m.sum())})', zorder=3)
 
     ax_main.axhline(0, color='0.75', lw=0.6, zorder=0)
     ax_main.axvline(0, color='0.75', lw=0.6, zorder=0)
@@ -264,7 +274,7 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
     sns.despine(ax=ax_main)
 
     # --- marginal boxplots; "other" is the gray baseline box nearest the scatter ---
-    labels = [g for g, _ in GROUPS]
+    labels = ['other' if g == 'other' else ARCH_RELABEL[g] for g, _ in GROUPS]
     draw_boxes(ax_boxx, group_values(ms), 'horizontal')
     draw_boxes(ax_boxy, group_values(hs), 'vertical')
     annotate_sig(ax_boxx, ms, 'horizontal')
@@ -294,7 +304,7 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
 print('--- L2/3 CCA gene-loading joint plots (boxplot marginals) ---')
 print(f'  universe: {UNIVERSE}  ({len(shared)} shared orthologs)')
 print(f'  archetype genes on scatter: '
-      f'{ {L: int((letters == L).sum()) for L in ARCH_COLORS} } '
+      f'{ {ARCH_RELABEL[L]: int((letters == L).sum()) for L in ARCH_ORDER} } '
       f'of {len(gene2arch)} mouse markers')
 
 print(f'  running {N_PERM} gene-label permutations for CCA1/CCA2 significance...')

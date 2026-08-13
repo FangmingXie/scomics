@@ -7,7 +7,8 @@ place the re-basing is meaningful.
 
 The same mouse-derived scores as script 07 (score_B and the A−C contrast, computed on human
 cells by script 06) color the human cells, now positioned by their projection onto the human
-canonical weights. A cell's CCA coordinate is `(VX coords − mean) · a_vx`, where `a_vx` is the
+canonical weights. Mouse score panels carry the published primed labels (internal score_B → B',
+score_A−score_C → C'−A', via ARCH_RELABEL), matching the primed human vertices and scripts/it/41,48,50. A cell's CCA coordinate is `(VX coords − mean) · a_vx`, where `a_vx` is the
 Gate-A VX canonical weight vector from 16; the human PCHA archetype vertices are carried into
 the same frame via `aa_vx = aa · inner_comps + inner_mean` (script 04) followed by the same
 projection, so cells and vertices share one coordinate system. Styling matches 07 exactly
@@ -50,8 +51,11 @@ HUMAN_SUBCLASS = 'L2/3 IT'
 MOUSE_SUBCLASS = 'L2/3'
 VX_COLS        = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']   # Gate-A human L2/3 (04/16)
 CCA_AXES       = ['CCA1', 'CCA2']
-PANELS         = [{'name': 'B', 'pos': 'B'},
-                  {'name': 'A − C', 'pos': 'A', 'neg': 'C'}]
+# internal mouse archetype keys A/B/C index score_* columns; displayed with the published
+# primed labels (matching scripts/it/41,48,50 and the primed human vertices below).
+ARCH_RELABEL   = {'A': "C'", 'B': "B'", 'C': "A'"}   # internal -> displayed
+PANELS         = [{'name': ARCH_RELABEL['B'], 'pos': 'B'},
+                  {'name': f"{ARCH_RELABEL['A']} − {ARCH_RELABEL['C']}", 'pos': 'A', 'neg': 'C'}]
 # human PCHA archetype vertices are archetype_1..4; 07's L23 rename to primed letters
 AA_RENAME      = {'archetype_1': "D'", 'archetype_2': "C'", 'archetype_3': "B'", 'archetype_4': "A'"}
 
@@ -114,7 +118,8 @@ for p in PANELS:
     panel_vals.append(vals)
     panel_names.append(p['name'])
 
-print(f'--- L2/3: mouse {MOUSE_SUBCLASS} B / A−C scores on human CCA1×CCA2 '
+print(f'--- L2/3: mouse {MOUSE_SUBCLASS} {ARCH_RELABEL["B"]} / '
+      f'{ARCH_RELABEL["A"]}−{ARCH_RELABEL["C"]} scores on human CCA1×CCA2 '
       f'(r = {r_cca[0]:.3f}, {r_cca[1]:.3f}) ---')
 
 save_score_scatter_pdf(

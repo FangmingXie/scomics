@@ -4,7 +4,8 @@ Script 18 rendered the mouse-derived L2/3 scores (score_B and the A-C contrast) 
 CCA1xCCA2 embedding. This script replots those two panels and adds the matching pair for *mouse*
 cells positioned on the *mouse* CCA1xCCA2 embedding, colored by the native mouse archetype scores.
 The result is a 2x2 grid: rows are species (top = human Jorstad23, bottom = mouse Cheng22),
-columns are the two score readouts (Score B, Score A-C).
+columns are the two score readouts, shown with the published primed labels (Score B', Score
+C'-A'; internal score_B and score_A-score_C, via ARCH_RELABEL {A:C', B:B', C:A'}).
 
 Both rows share one construction. A cell's CCA coordinate is `(VX coords - mean) . a_vx`, with
 `a_vx` the Gate-A VX canonical weight vector from 16 (normalized + sign-fixed there); the species'
@@ -70,8 +71,11 @@ OUT_PDF       = os.path.join(FIG_DIR, '18b.human_mouse_L23_scores_cca.pdf')
 CCA_AXES  = ['CCA1', 'CCA2']
 HUMAN_VX  = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']   # Gate-A human L2/3 (04/16)
 MOUSE_VX  = ['VX1', 'VX2', 'VX5', 'VX7', 'VX8', 'VX9']    # Gate-A mouse L2/3 (05/16)
-PANELS    = [{'name': 'B', 'pos': 'B'},                   # columns: sequential score, then contrast
-             {'name': 'A - C', 'pos': 'A', 'neg': 'C'}]
+# internal mouse archetype keys A/B/C index score_* columns; displayed with the published
+# primed labels (matching scripts/it/41,48,50, script 18, and the primed vertices below).
+ARCH_RELABEL = {'A': "C'", 'B': "B'", 'C': "A'"}          # internal -> displayed
+PANELS    = [{'name': ARCH_RELABEL['B'], 'pos': 'B'},     # columns: sequential score, then contrast
+             {'name': f"{ARCH_RELABEL['A']} - {ARCH_RELABEL['C']}", 'pos': 'A', 'neg': 'C'}]
 # human PCHA vertices are the four human archetypes -> primed letters (script 07/18); mouse PCHA
 # vertices are the three mouse archetypes that define the scores. The mouse row is shown reflected
 # (CCA1 -> -CCA1, axis labelled CCA1') and its vertices relabelled A->C', B->B', C->A' purely so
@@ -179,7 +183,8 @@ rows = [
      'labels': m_labels, 'r': m_r, 'specs': panel_specs(m_scores), 'cca1_label': "CCA1'"},
 ]
 
-print(f'--- L2/3 mouse B / A-C scores on conserved CCA1xCCA2 (r = {h_r[0]:.3f}, {h_r[1]:.3f}) ---')
+print(f'--- L2/3 mouse {ARCH_RELABEL["B"]} / {ARCH_RELABEL["A"]}-{ARCH_RELABEL["C"]} scores '
+      f'on conserved CCA1xCCA2 (r = {h_r[0]:.3f}, {h_r[1]:.3f}) ---')
 print(f'  human cells {len(h_cells)}, mouse cells {len(m_cells)}')
 
 plt.rcParams['pdf.fonttype'] = 42
@@ -189,8 +194,8 @@ for i, row in enumerate(rows):
     for j, (p, (vals, cmap, vlim, cbar)) in enumerate(zip(PANELS, row['specs'])):
         draw_panel(axes[i][j], row['cells'], vals, cmap, vlim, cbar, row['aa'], row['labels'],
                    row['r'], f'{row["species"]} — Score {p["name"]}', fig, row['cca1_label'])
-        if p['name'].startswith('A'):
-            print(f'  {row["species"]}: A-C range [{vals.min():.3f}, {vals.max():.3f}], '
+        if 'neg' in p:   # the contrast panel
+            print(f'  {row["species"]}: {p["name"]} range [{vals.min():.3f}, {vals.max():.3f}], '
                   f'color limit +/-{vlim[1]:.3f}')
 
 fig.suptitle('L2/3 mouse Cheng22 archetype scores on the conserved CCA1xCCA2 embedding — '

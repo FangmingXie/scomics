@@ -66,11 +66,12 @@ HUMAN_VX     = ['VX3', 'VX6', 'VX8', 'VX9', 'VX10']
 MOUSE_VX     = ['VX1', 'VX3', 'VX4', 'VX6', 'VX9', 'VX10']
 MOUSE_NOC    = 3
 ALPHABET     = ['A', 'B', 'C', 'D', 'E', 'F']
-ARCH_COLORS  = {'A': 'C0', 'B': 'C1', 'C': 'C2'}   # A->C0, B->C1, C->C2 (internal keys)
 # Internal keys A/B/C (= archetype_1/2/3) are display-relabeled for publication, matching
 # scripts/it/41,48,50 and 24b. Only labels change; keys drive all computation and coloring.
 ARCH_RELABEL = {'A': "C'", 'B': "B'", 'C': "A'"}   # internal -> displayed
 ARCH_ORDER   = ['C', 'B', 'A']                     # so labels read A', B', C'
+# color follows the DISPLAYED label: A'->C0, B'->C1, C'->C2 (so internal C->C0, B->C1, A->C2)
+ARCH_COLORS  = {'A': 'C2', 'B': 'C1', 'C': 'C0'}   # internal key -> color
 BASE_COLOR   = '#bdbdbd'                            # "other" genes: neutral gray
 POINT_SIZE   = {'hvg_intersect': 10, 'hvg_union': 4}[UNIVERSE]
 BASE_ALPHA   = {'hvg_intersect': 1.0, 'hvg_union': 0.45}[UNIVERSE]

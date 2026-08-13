@@ -16,6 +16,10 @@ a rightward-shifted A histogram means A genes carry positive loading on that axi
 
 No CCA/loadings refit -- canonical weights read from 16's persisted TSVs, exactly as in 20.
 
+Archetypes are keyed internally by A/B/C (= mouse archetype_1/2/3) for marker identity and
+coloring, but *displayed* with the published primed labels via ARCH_RELABEL {A:C', B:B', C:A'}
+and ordered A', B', C' (matching scripts/it/41,48,50). Below, "A/B/C" names the internal keys.
+
 --universe selects the gene set (see 16's docstring): hvg_intersect (357) | hvg_union (3220,
 default). The one-sided `human_hvg`/`mouse_hvg` selections that 16 also offers are not plotted
 here. Under the historical `hvg_intersect` set only 51 of the 195 mouse archetype markers
@@ -60,7 +64,12 @@ HUMAN_VX     = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']
 MOUSE_VX     = ['VX1', 'VX2', 'VX5', 'VX7', 'VX8', 'VX9']
 MOUSE_NOC    = 3
 ALPHABET     = ['A', 'B', 'C', 'D', 'E', 'F']
-ARCH_COLORS  = {'A': 'C0', 'B': 'C1', 'C': 'C2'}   # A->C0, B->C1, C->C2
+# Internal keys A/B/C (= archetype_1/2/3) are display-relabeled for publication, matching
+# scripts/it/41,48,50. Only labels change; keys drive all computation and coloring.
+ARCH_RELABEL = {'A': "C'", 'B': "B'", 'C': "A'"}   # internal -> displayed
+ARCH_ORDER   = ['C', 'B', 'A']                     # so labels read A', B', C'
+# color follows the DISPLAYED label: A'->C0, B'->C1, C'->C2 (so internal C->C0, B->C1, A->C2)
+ARCH_COLORS  = {'A': 'C2', 'B': 'C1', 'C': 'C0'}   # internal key -> color
 BASE_COLOR   = '#bdbdbd'                            # "other" genes: neutral gray
 # The gray cloud grows 357 -> 3220 between universes; shrink and fade it so the archetype
 # points stay legible on top of it.
@@ -191,10 +200,11 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
     ax_main.scatter(ms[letters == ''], hs[letters == ''], s=POINT_SIZE, c=BASE_COLOR,
                     linewidths=0, alpha=BASE_ALPHA, rasterized=True,
                     label=f'other (n={n_other})')
-    for L, color in ARCH_COLORS.items():
+    for L in ARCH_ORDER:
+        color = ARCH_COLORS[L]
         m = letters == L
         ax_main.scatter(ms[m], hs[m], s=POINT_SIZE + ARCH_BUMP, c=color, linewidths=0, alpha=0.9,
-                        label=f'mouse archetype {L} (n={int(m.sum())})', zorder=3)
+                        label=f'mouse archetype {ARCH_RELABEL[L]} (n={int(m.sum())})', zorder=3)
 
     ax_main.axhline(0, color='0.75', lw=0.6, zorder=0)
     ax_main.axvline(0, color='0.75', lw=0.6, zorder=0)
@@ -220,7 +230,8 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
 
     # --- marginal distributions of A/B/C genes: density histogram (bars) + smoothed KDE curve.
     #     Both use unit-integral density so the faint bars and the KDE line share one y-scale. ---
-    for L, color in ARCH_COLORS.items():
+    for L in ARCH_ORDER:
+        color = ARCH_COLORS[L]
         m = letters == L
         ax_histx.hist(ms[m], bins=bins, density=True, color=color, alpha=0.18,
                       histtype='stepfilled', lw=0)
@@ -251,7 +262,7 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
 print(f'--- L2/3 CCA gene-loading joint plots ---')
 print(f'  universe: {UNIVERSE}  ({len(shared)} shared orthologs)')
 print(f'  archetype genes on scatter: '
-      f'{ {L: int((letters == L).sum()) for L in ARCH_COLORS} } '
+      f'{ {ARCH_RELABEL[L]: int((letters == L).sum()) for L in ARCH_ORDER} } '
       f'of {len(gene2arch)} mouse markers')
 
 print(f'  running {N_PERM} gene-label permutations for CCA1/CCA2 significance...')
