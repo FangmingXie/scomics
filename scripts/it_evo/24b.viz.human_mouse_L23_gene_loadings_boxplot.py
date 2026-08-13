@@ -1,38 +1,32 @@
-"""Polished CCA1/CCA2 mouse-vs-human ortholog gene-loading joint plots (L2/3 only, plots only).
+"""Script 24 with the marginals drawn as boxplots instead of histogram + KDE curves.
 
-A refinement of script 20's first two panels. Instead of one three-panel figure, this emits a
-separate PDF per conserved canonical axis (CCA1, CCA2). Each figure is a joint plot:
+Identical scatter, gene universe, canonical projection and permutation test as
+`24.viz.human_mouse_L23_gene_loadings_marginal.py` -- only the two marginal panels differ:
 
-  * center  — the mouse-vs-human gene-loading scatter (identical content to 20's panel: gray
-              "other" genes, mouse archetype A/B/C genes colored A->C0/B->C1/C->C2, the y=x
-              diagonal, and the top genes by |mouse.human| loading labelled with a black ring).
-  * bottom  — a marginal histogram *below the x-axis* showing how the mouse loadings (x) of the
-              A, B, C archetype genes are distributed, one colored curve per archetype.
-  * right   — the matching marginal histogram *along the y-axis* for the human loadings (y) of
-              the same A, B, C genes.
+  * 24  -- density histogram (faint bars) + gaussian_kde curve per archetype.
+  * 24b -- one horizontal boxplot per group below the x-axis and one vertical boxplot per
+           group along the y-axis.
 
-The marginals make explicit which pole of each conserved axis each archetype's program sits on:
-a rightward-shifted A histogram means A genes carry positive loading on that axis in both species.
+Boxplots buy three things the KDE version could not give:
+  1. No bandwidth. KDE_BW=0.35 was doing real work at n=8 (archetype B under
+     `hvg_intersect`); a box has no smoothing parameter to tune.
+  2. The **"other" genes are drawn as a fourth, gray box**, so each archetype is read
+     against the bulk of the transcriptome rather than against the other two archetypes.
+     That is the comparison the "which pole does this archetype sit on" claim needs, and 24
+     omits it entirely.
+  3. Medians and IQRs are directly comparable across groups of very different n.
 
-No CCA/loadings refit -- canonical weights read from 16's persisted TSVs, exactly as in 20.
+The trade-off is that multimodality is invisible in a box; when that matters, read 24.
 
---universe selects the gene set (see 16's docstring): hvg_intersect (357) | hvg_union (3220,
-default). The one-sided `human_hvg`/`mouse_hvg` selections that 16 also offers are not plotted
-here. Under the historical `hvg_intersect` set only 51 of the 195 mouse archetype markers
-survive the double-HVG intersection (A=20, B=8, C=23), which makes B's marginal KDE close to
-meaningless; under `hvg_union` 177 do (A=82, B=35, C=60). Because the canonical correlation
-depends on the gene universe, r is NOT comparable across universes -- the panel annotates the
-universe and n for that reason.
+A Mann-Whitney U of each archetype against the "other" bulk is printed to stdout per axis and
+per species, and annotated on the figure as significance stars beside each archetype's box
+(ns / * .05 / ** .01 / *** .001, two-sided, vs the gray bulk). It is descriptive: the three
+archetypes are not independent of each other and no multiplicity correction is applied. With
+n_other in the thousands, even a small median shift reaches ***, so read the stars alongside
+the rank-biserial effect sizes on stdout, not on their own.
 
-Reads (paths switch with UNIVERSE):
-  local_data/res/it_evo/26.{human,mouse}_L23_varimax_loadings_full.tsv  (expanded)
-  local_data/res/it_evo/02.human_L23_varimax_loadings.tsv               (HVG membership)
-  local_data/res/it/19.cheng22_L23_varimax_loadings.tsv                 (HVG membership)
-  local_data/res/it_evo/16.L23_axis_cca_weights_{human,mouse}<SUFFIX>.tsv
-  local_data/res/it_evo/05.mouse_L23_archetype_markers.tsv
-  data/human_mouse_orthologs.tsv
-Outputs:
-  local_data/fig/it_evo/24.human_mouse_L23_gene_loadings_CCA{1,2}<SUFFIX>.pdf
+Reads / writes the same inputs as 24, with `24b.` outputs:
+  local_data/fig/it_evo/24b.human_mouse_L23_gene_loadings_CCA{1,2}<SUFFIX>.pdf
 """
 
 import os
@@ -41,15 +35,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from scipy.stats import gaussian_kde
+from scipy.stats import mannwhitneyu
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- config ---
-# Gene universe, mirroring 16's UNIVERSES/UNIVERSE_SUFFIX. 'hvg_union' is the primary
-# expanded set; 'hvg_intersect' reproduces the original figures. Each writes its own
-# suffixed PDFs, so the variants coexist rather than overwriting each other. 16 must have
-# been run at the same universe first — this reads its canonical weights.
 UNIVERSE_SUFFIX = {'hvg_intersect': '', 'hvg_union': '_union'}
 _parser = argparse.ArgumentParser(description=__doc__)
 _parser.add_argument('--universe', choices=list(UNIVERSE_SUFFIX), default='hvg_union')
@@ -62,15 +52,13 @@ MOUSE_NOC    = 3
 ALPHABET     = ['A', 'B', 'C', 'D', 'E', 'F']
 ARCH_COLORS  = {'A': 'C0', 'B': 'C1', 'C': 'C2'}   # A->C0, B->C1, C->C2
 BASE_COLOR   = '#bdbdbd'                            # "other" genes: neutral gray
-# The gray cloud grows 357 -> 3220 between universes; shrink and fade it so the archetype
-# points stay legible on top of it.
 POINT_SIZE   = {'hvg_intersect': 10, 'hvg_union': 4}[UNIVERSE]
 BASE_ALPHA   = {'hvg_intersect': 1.0, 'hvg_union': 0.45}[UNIVERSE]
 ARCH_BUMP    = {'hvg_intersect': 12, 'hvg_union': 6}[UNIVERSE]
 TOP_N_LABEL  = 20                                   # label the top genes by |mouse.human| loading
-N_BINS       = 24                                   # marginal-histogram bins (shared x/y range)
-KDE_GRID     = 200                                  # points for the smoothed marginal density
-KDE_BW       = 0.35                                 # gaussian_kde bandwidth factor (larger = smoother)
+BOX_WIDTH    = 0.62                                 # fraction of the unit slot each box fills
+FLIER_SIZE   = 3.0                                  # outlier marker size (points)
+SIG_LEVELS   = [(0.001, '***'), (0.01, '**'), (0.05, '*')]   # MWU vs "other"; else 'ns'
 N_PERM       = 20000                                # gene-label permutations (mirror script 21)
 PERM_SEED    = 0                                    # mirror script 21's SEED so p-values match exactly
 R_MATCH_TOL  = 1e-6                                 # panel r vs canonical r (see make_joint_figure)
@@ -87,14 +75,12 @@ IN_W_HUMAN    = os.path.join(RES_DIR, f'16.L23_axis_cca_weights_human{SUFFIX}.ts
 IN_W_MOUSE    = os.path.join(RES_DIR, f'16.L23_axis_cca_weights_mouse{SUFFIX}.tsv')
 IN_MARKERS    = os.path.join(RES_DIR, '05.mouse_L23_archetype_markers.tsv')
 IN_ORTHOLOGS  = os.path.join(PROJECT_ROOT, 'data', 'human_mouse_orthologs.tsv')
-OUT_PDF_CCA1  = os.path.join(FIG_DIR, f'24.human_mouse_L23_gene_loadings_CCA1{SUFFIX}.pdf')
-OUT_PDF_CCA2  = os.path.join(FIG_DIR, f'24.human_mouse_L23_gene_loadings_CCA2{SUFFIX}.pdf')
+OUT_PDF_CCA1  = os.path.join(FIG_DIR, f'24b.human_mouse_L23_gene_loadings_CCA1{SUFFIX}.pdf')
+OUT_PDF_CCA2  = os.path.join(FIG_DIR, f'24b.human_mouse_L23_gene_loadings_CCA2{SUFFIX}.pdf')
 
 os.makedirs(FIG_DIR, exist_ok=True)
 
-# --- shared orthologs, centered gene loading blocks ---
-# Gene-set construction mirrors 16.load_loadings exactly; the 2000-HVG TSVs always define
-# HVG membership, and only supply the loadings under 'hvg_intersect'.
+# --- shared orthologs, centered gene loading blocks (mirrors 16.load_loadings) ---
 ortho = (pd.read_csv(IN_ORTHOLOGS, sep='\t')
          .drop_duplicates('human_symbol').drop_duplicates('mouse_symbol'))
 hvg_h = pd.read_csv(IN_H_HVG, sep='\t', index_col=0)
@@ -129,10 +115,7 @@ def cca_load(axis):
     return Yc @ wm, Xc @ wh
 
 
-# --- permutation significance of the cross-species canonical correlations (mirrors script 21) ---
-# The r shown on each panel is the canonical correlation of that axis. Its null shuffles the mouse
-# gene labels, destroying the pairing while each species' loading subspace is untouched; permuting
-# rows of Y commutes with orthonormalization, so each replicate is one k*k SVD of Qx^T (P.Qy).
+# --- permutation significance of the cross-species canonical correlations (mirrors 21/24) ---
 def _orthonormal(Mtx):
     return np.linalg.qr(Mtx - Mtx.mean(axis=0))[0]
 
@@ -159,13 +142,79 @@ mk = mk.sort_values('log2FC', ascending=False).drop_duplicates('gene')
 gene2arch = dict(zip(mk['gene'], mk['letter']))
 letters = np.array([gene2arch.get(g, '') for g in shared['mouse_symbol'].values])
 
+# Group order runs "other" first so it sits nearest the scatter in both marginals and reads
+# as the baseline the archetypes are compared against.
+GROUPS = [('other', BASE_COLOR)] + [(L, c) for L, c in ARCH_COLORS.items()]
+
+
+def draw_boxes(ax, values_by_group, orientation):
+    """One box per group at positions 0..n-1, colored to match the scatter."""
+    data = [values_by_group[g] for g, _ in GROUPS]
+    bp = ax.boxplot(data, positions=range(len(GROUPS)), widths=BOX_WIDTH,
+                    orientation=orientation, patch_artist=True, showfliers=True,
+                    medianprops=dict(color='black', lw=1.2),
+                    whiskerprops=dict(color='0.4', lw=0.8),
+                    capprops=dict(color='0.4', lw=0.8),
+                    flierprops=dict(marker='o', markersize=FLIER_SIZE, markerfacecolor='0.5',
+                                    markeredgecolor='none', alpha=0.5))
+    for patch, (_, color) in zip(bp['boxes'], GROUPS):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.55)
+        patch.set_edgecolor('0.35')
+        patch.set_linewidth(0.8)
+    return bp
+
+
+def group_values(vals):
+    return {'other': vals[letters == ''], **{L: vals[letters == L] for L in ARCH_COLORS}}
+
+
+def mwu_vs_other(vals):
+    """Mann-Whitney U of each archetype against the 'other' bulk. letter -> (p, rank-biserial)."""
+    g = group_values(vals)
+    out = {}
+    for L in ARCH_COLORS:
+        if len(g[L]) < 1:
+            continue
+        u, p = mannwhitneyu(g[L], g['other'], alternative='two-sided')
+        # rank-biserial effect size: +1 = archetype entirely above the bulk
+        out[L] = (p, 2 * u / (len(g[L]) * len(g['other'])) - 1)
+    return out
+
+
+def stars(p):
+    for thresh, mark in SIG_LEVELS:
+        if p < thresh:
+            return mark
+    return 'ns'
+
+
+def report_mwu(axis_label, ms, hs):
+    """Print the same test the figure annotates, with effect sizes the stars cannot show."""
+    for species, vals in (('mouse', ms), ('human', hs)):
+        stats = mwu_vs_other(vals)
+        parts = [f'{L}: med {np.median(group_values(vals)[L]):+.3f} rb {rb:+.2f} '
+                 f'p {p:.1e} {stars(p)}' for L, (p, rb) in stats.items()]
+        print(f'    {axis_label} {species:5s} '
+              f'(bulk med {np.median(group_values(vals)["other"]):+.3f})  ' + ' | '.join(parts))
+
+
+def annotate_sig(ax, vals, orientation):
+    """Significance stars vs the 'other' bulk, at the outer edge of each archetype's slot."""
+    trans = (ax.get_yaxis_transform() if orientation == 'horizontal'
+             else ax.get_xaxis_transform())
+    for L, (p, _) in mwu_vs_other(vals).items():
+        pos = [g for g, _ in GROUPS].index(L)
+        if orientation == 'horizontal':   # categories on y, values on x
+            ax.text(0.995, pos, stars(p), transform=trans, ha='right', va='center',
+                    fontsize=8, color='0.25')
+        else:                             # categories on x, values on y
+            ax.text(pos, 0.995, stars(p), transform=trans, ha='center', va='top',
+                    fontsize=8, color='0.25')
+
 
 def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
-    """Scatter of (mouse, human) loadings with A/B/C marginal histograms below-x and along-y."""
-    # The panel must quote ONE statistic: the Pearson r of the projected loadings and the
-    # canonical correlation the p-value tests coincide only if 16's saved weights really are
-    # the canonical vectors (16 normalizes and sign-fixes them, which preserves r). Assert
-    # that rather than displaying an r from one estimator beside a p from another.
+    """Scatter of (mouse, human) loadings with per-group boxplots below-x and along-y."""
     r = float(np.corrcoef(ms, hs)[0, 1])
     if not abs(abs(r) - sig['r_cca']) < R_MATCH_TOL:
         raise ValueError(
@@ -175,18 +224,16 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
     p_str = (f'p < {1 / (N_PERM + 1):.0e}' if sig['n_ge'] == 0 else f'p = {sig["p"]:.1e}')
     top_idx = np.argsort(np.abs(ms * hs))[::-1][:TOP_N_LABEL]
     lim = np.array([min(ms.min(), hs.min()), max(ms.max(), hs.max())]) * 1.08
-    bins = np.linspace(lim[0], lim[1], N_BINS + 1)
-    grid = np.linspace(lim[0], lim[1], KDE_GRID)
 
     plt.rcParams['pdf.fonttype'] = 42
     fig = plt.figure(figsize=(8, 8))
     gs = fig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[4, 1],
                           wspace=0.04, hspace=0.04)
     ax_main = fig.add_subplot(gs[0, 0])
-    ax_histx = fig.add_subplot(gs[1, 0], sharex=ax_main)   # below x-axis
-    ax_histy = fig.add_subplot(gs[0, 1], sharey=ax_main)   # along y-axis
+    ax_boxx = fig.add_subplot(gs[1, 0], sharex=ax_main)   # below x-axis
+    ax_boxy = fig.add_subplot(gs[0, 1], sharey=ax_main)   # along y-axis
 
-    # --- main scatter (mirrors script 20's panel) ---
+    # --- main scatter (identical to 24) ---
     n_other = int((letters == '').sum())
     ax_main.scatter(ms[letters == ''], hs[letters == ''], s=POINT_SIZE, c=BASE_COLOR,
                     linewidths=0, alpha=BASE_ALPHA, rasterized=True,
@@ -208,47 +255,43 @@ def make_joint_figure(ms, hs, axis_label, out_pdf, sig):
 
     ax_main.set_xlim(lim); ax_main.set_ylim(lim)
     ax_main.set_ylabel(f'Human Jorstad23 {axis_label} gene loading')
-    # r depends on the gene universe and is not comparable across universes — always shown
-    # with the universe name and the gene count.
     ax_main.set_title(f'L2/3 {axis_label}: mouse vs human\n'
                       f'r = {r:.3f},  {p_str}  (gene-label permutation, {N_PERM} reps)\n'
                       f'universe: {UNIVERSE},  {len(shared)} orthologous genes',
                       fontsize=11)
     ax_main.legend(loc='upper left', fontsize=8, framealpha=0.9)
-    ax_main.tick_params(labelbottom=False)   # x labels live on the marginal below
+    ax_main.tick_params(labelbottom=False)
     sns.despine(ax=ax_main)
 
-    # --- marginal distributions of A/B/C genes: density histogram (bars) + smoothed KDE curve.
-    #     Both use unit-integral density so the faint bars and the KDE line share one y-scale. ---
-    for L, color in ARCH_COLORS.items():
-        m = letters == L
-        ax_histx.hist(ms[m], bins=bins, density=True, color=color, alpha=0.18,
-                      histtype='stepfilled', lw=0)
-        ax_histy.hist(hs[m], bins=bins, density=True, color=color, alpha=0.18,
-                      histtype='stepfilled', lw=0, orientation='horizontal')
-        if m.sum() < 2:   # gaussian_kde needs >=2 points
-            continue
-        dx = gaussian_kde(ms[m], bw_method=KDE_BW)(grid)
-        dy = gaussian_kde(hs[m], bw_method=KDE_BW)(grid)
-        ax_histx.plot(grid, dx, color=color, lw=1.6)
-        ax_histy.plot(dy, grid, color=color, lw=1.6)
+    # --- marginal boxplots; "other" is the gray baseline box nearest the scatter ---
+    labels = [g for g, _ in GROUPS]
+    draw_boxes(ax_boxx, group_values(ms), 'horizontal')
+    draw_boxes(ax_boxy, group_values(hs), 'vertical')
+    annotate_sig(ax_boxx, ms, 'horizontal')
+    annotate_sig(ax_boxy, hs, 'vertical')
 
-    ax_histx.invert_yaxis()   # bars hang downward from the scatter (marginal "below" x-axis)
-    ax_histx.axvline(0, color='0.75', lw=0.6, zorder=0)
-    ax_histy.axhline(0, color='0.75', lw=0.6, zorder=0)
-    ax_histx.set_xlabel(f'Mouse Cheng22 {axis_label} gene loading')
-    ax_histx.set_ylabel('density')
-    ax_histy.set_xlabel('density')
-    ax_histy.tick_params(labelleft=False)   # shares y ticks with the main scatter
-    sns.despine(ax=ax_histx)
-    sns.despine(ax=ax_histy)
+    ax_boxx.set_ylim(len(GROUPS) - 0.5, -0.5)     # group 0 ("other") nearest the scatter
+    ax_boxx.set_yticks(range(len(GROUPS)))
+    ax_boxx.set_yticklabels(labels, fontsize=8)
+    ax_boxx.axvline(0, color='0.75', lw=0.6, zorder=0)
+    ax_boxx.set_xlabel(f'Mouse Cheng22 {axis_label} gene loading')
+
+    ax_boxy.set_xlim(-0.5, len(GROUPS) - 0.5)     # group 0 ("other") nearest the scatter
+    ax_boxy.set_xticks(range(len(GROUPS)))
+    ax_boxy.set_xticklabels(labels, fontsize=8)
+    ax_boxy.axhline(0, color='0.75', lw=0.6, zorder=0)
+    ax_boxy.tick_params(labelleft=False)          # shares y ticks with the main scatter
+    ax_boxy.set_xlabel('Mann-Whitney U vs "other"\nns  * .05  ** .01  *** .001', fontsize=7)
+
+    sns.despine(ax=ax_boxx)
+    sns.despine(ax=ax_boxy)
 
     fig.savefig(out_pdf, bbox_inches='tight', dpi=300)
     plt.close(fig)
     return r
 
 
-print(f'--- L2/3 CCA gene-loading joint plots ---')
+print('--- L2/3 CCA gene-loading joint plots (boxplot marginals) ---')
 print(f'  universe: {UNIVERSE}  ({len(shared)} shared orthologs)')
 print(f'  archetype genes on scatter: '
       f'{ {L: int((letters == L).sum()) for L in ARCH_COLORS} } '
@@ -258,11 +301,15 @@ print(f'  running {N_PERM} gene-label permutations for CCA1/CCA2 significance...
 sig = permutation_pvals()
 for axis in ('CCA1', 'CCA2'):
     s = sig[axis]
-    print(f'  {axis}: r_cca {s["r_cca"]:.3f}, {s["n_ge"]}/{N_PERM} >= obs, '
-          f'p = {s["p"]:.2e}')
+    print(f'  {axis}: r_cca {s["r_cca"]:.3f}, {s["n_ge"]}/{N_PERM} >= obs, p = {s["p"]:.2e}')
 
 ms_cca1, hs_cca1 = cca_load('CCA1')
 ms_cca2, hs_cca2 = cca_load('CCA2')
+
+print('  archetype vs "other" bulk (Mann-Whitney U, rank-biserial; descriptive, uncorrected):')
+report_mwu('CCA1', ms_cca1, hs_cca1)
+report_mwu('CCA2', ms_cca2, hs_cca2)
+
 r1 = make_joint_figure(ms_cca1, hs_cca1, 'CCA1', OUT_PDF_CCA1, sig['CCA1'])
 r2 = make_joint_figure(ms_cca2, hs_cca2, 'CCA2', OUT_PDF_CCA2, sig['CCA2'])
 print(f'  panel r: CCA1 {r1:.3f}, CCA2 {r2:.3f}')
