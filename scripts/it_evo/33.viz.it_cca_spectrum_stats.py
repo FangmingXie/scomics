@@ -148,9 +148,11 @@ for ax, (col, ylabel) in zip(axes, METRICS):
     ax.set_xticklabels([f'CCA{i}' for i in range(1, xmax + 1)])
     ax.set_xlabel('canonical component')
     ax.set_ylabel(ylabel)
-    ax.axhline(0, color='0.8', lw=0.6, zorder=0)
-    if col in ('r', 'var_explained_human', 'var_explained_mouse'):
-        ax.set_ylim(0, 1)
+    # let each metric autoscale to its own dynamic range rather than pinning r/var to [0, 1];
+    # only the z panel gets a 0 reference line (its values approach/cross zero)
+    if col == 'z':
+        ax.axhline(0, color='0.8', lw=0.6, zorder=0)
+    ax.margins(y=0.08)
     sns.despine(ax=ax)
 axes[0].legend(title='subclass', fontsize=8, frameon=False)
 fig.suptitle('Cross-species CCA per IT subclass  (universe: hvg_intersect)', fontsize=12)
