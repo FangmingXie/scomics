@@ -8,13 +8,15 @@ dataset (V1), with related TFs overlaid as separate lines in one panel.
 
 For each TF, the per-cell regulon score uses the activating (+/+) SCENIC+ eRegulon from the
 Wang25 SuppTable13 table (`27.human_wang25_regulon_targets.tsv`): each target gene's
-log2(CP10k+1) is min-max normalized to [0, 1] across cells (NORM_PCTILE percentiles) then
-averaged across the regulon's target genes present in the panel (script-42 method).
+log2(CP10k+1) is max-scaled to [0, 1] across cells (divided by the NORM_MAX_PCTILE
+percentile, no baseline subtraction, so no expression stays 0) then averaged across the
+regulon's target genes present in the panel.
 
 Cells are pooled by developmental stage (second trimester -> third trimester -> infancy ->
-adolescence). Each TF's per-stage means are min-max normalized to [0, 1] across stages so
-lines are directly comparable in temporal shape. One figure, 2 panels side by side, in a
-single PDF.
+adolescence). Each TF's per-stage means are likewise max-scaled (divided by the largest
+per-stage mean) rather than min-max normalized, so 1 marks the peak stage and 0 marks no
+activity — relative magnitudes across stages are preserved. One figure, 2 panels side by
+side, in a single PDF.
 
 Reads:
   links/l23_evo/wang25_human_multiome_gex_v1_l23.h5ad
@@ -61,7 +63,7 @@ KEEP_TYPE = 'EN-L2_3-IT'       # L2/3 excitatory neurons
 TYPE_COL  = 'Type'
 GROUP_COL = 'Group'
 CP_TARGET = 1e4                # CP10k
-NORM_PCTILE = (0, 99)          # per-gene min-max [0,1] percentiles, before averaging (as script 42)
+NORM_MAX_PCTILE = 99           # per-gene max-scaling percentile (maps to 1), before averaging
 
 # Developmental stages in temporal order (obs values -> display labels).
 STAGE_ORDER  = ['Second_trimester', 'Third_trimester', 'Infancy', 'Adolescence']
@@ -75,7 +77,7 @@ OUT_TSV = os.path.join(OUT_RES_DIR, '50.wang25_multiome_l23_ap1_egr_regulon_targ
 
 
 def regulon_stage_stats(tf, tf_targets, X, depth, stage, stages, name2idx):
-    """Per-stage mean+/-SEM (and stage-level min-max) of a TF's regulon-target activity.
+    """Per-stage mean+/-SEM (and stage-level max-scaling) of a TF's regulon-target activity.
 
     Returns (stats_df, n_targets_used) or None if the TF has no regulon / no panel targets.
     """
@@ -86,12 +88,13 @@ def regulon_stage_stats(tf, tf_targets, X, depth, stage, stages, name2idx):
     if not used:
         return None
 
-    # Per-cell score: min-max [0,1] each target across cells (NORM_PCTILE), then average.
+    # Per-cell score: max-scale each target across cells (NORM_MAX_PCTILE -> 1, 0 stays 0),
+    # then average. No baseline subtraction, so absent expression maps to 0.
     cols = [name2idx[g] for g in used]
     l2 = np.log2(X[:, cols] / depth[:, None] * CP_TARGET + 1.0)   # (n_cells, n_targets)
-    lo, hi = np.percentile(l2, NORM_PCTILE, axis=0)
-    rng_g = np.where(hi > lo, hi - lo, 1.0)
-    norm = np.clip((l2 - lo) / rng_g, 0.0, 1.0)
+    hi = np.percentile(l2, NORM_MAX_PCTILE, axis=0)
+    hi_g = np.where(hi > 0, hi, 1.0)
+    norm = np.clip(l2 / hi_g, 0.0, 1.0)
     score = norm.mean(axis=1)
 
     df = pd.DataFrame({'stage': stage, 'score': score})
@@ -103,12 +106,11 @@ def regulon_stage_stats(tf, tf_targets, X, depth, stage, stages, name2idx):
     }).reindex(stages).reset_index().rename(columns={'index': 'stage'})
     stats['sem'] = stats['std'] / np.sqrt(stats['n_cells'])
 
-    mmin, mmax = stats['mean'].min(), stats['mean'].max()
-    rng = mmax - mmin
-    if rng == 0:
-        raise ValueError(f"All per-stage means equal for {tf}; cannot min-max normalize")
-    stats['mean_norm'] = (stats['mean'] - mmin) / rng
-    stats['sem_norm'] = stats['sem'] / rng
+    mmax = stats['mean'].max()
+    if mmax <= 0:
+        raise ValueError(f"Max per-stage mean is {mmax} for {tf}; cannot max-scale")
+    stats['mean_norm'] = stats['mean'] / mmax
+    stats['sem_norm'] = stats['sem'] / mmax
     stats.insert(0, 'TF', tf)
     stats.insert(1, 'n_targets_used', len(used))
     return stats, len(used)
@@ -174,9 +176,10 @@ def main():
         ax.set_xticklabels([STAGE_LABELS.get(s, s) for s in stages],
                            rotation=45, ha='right', fontsize=8)
         ax.set_xlim(-0.4, len(stages) - 0.6)
+        ax.set_ylim(bottom=0)   # max-scaled: 0 = no activity, 1 = peak stage
         ax.set_xlabel('Developmental stage')
         if col == 0:
-            ax.set_ylabel('regulon target activity\n(per-gene [0,1] mean, minmax norm.)', fontsize=8)
+            ax.set_ylabel('regulon target activity\n(per-gene max-scaled mean, /max across stages)', fontsize=8)
         ax.set_title(f'{label} regulons', fontsize=11)
         ax.legend(fontsize=8, frameon=False, title='TF (n targets)', title_fontsize=8)
         ax.spines['top'].set_visible(False)
