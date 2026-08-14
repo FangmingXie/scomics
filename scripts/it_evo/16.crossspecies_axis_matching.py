@@ -37,9 +37,22 @@ Per subclass pair the script computes:
   7. Top genes per stable canonical pair by |x_loading · y_loading|.
 Steps 1, 2, 4 also run for all 16 human × mouse pairs → five aligned specificity grids.
 
+The gene universe is a swept parameter (--universe / --ladder). The historical
+`hvg_intersect` set is the intersection of two independently chosen 2000-HVG lists through
+1-to-1 orthology, which for L2/3 is 357 of 12,637 available orthologs — only 1.41x the
+chance overlap of two such lists, i.e. close to an arbitrary sample. Script 26 extends the
+loadings to every expressed gene without refitting anything, which opens three wider
+universes: the two one-sided selections `human_hvg` (n=1718) and `mouse_hvg` (n=1859),
+which control each other, and `hvg_union` (n=3220). Enlarging the universe LOWERS the
+canonical correlations (including
+the cross-validated ones: low-variance genes carry real conserved signal, but less of it
+per gene) while raising z and stabilizing the weights, so `r` is a property of the gene
+universe and is NOT comparable across universes — always quote it with n.
+
 Reads (per diagonal TOKEN):
-  local_data/res/it_evo/02.human_<TOKEN>_varimax_loadings.tsv
-  local_data/res/it/{19,21,23,25}.cheng22_<TOKEN>_varimax_loadings.tsv
+  local_data/res/it_evo/02.human_<TOKEN>_varimax_loadings.tsv          (HVG membership)
+  local_data/res/it/{19,21,23,25}.cheng22_<TOKEN>_varimax_loadings.tsv (HVG membership)
+  local_data/res/it_evo/26.{human,mouse}_<TOKEN>_varimax_loadings_full.tsv  (expanded only)
   data/human_mouse_orthologs.tsv
 Reads (--compat, L2/3 control against l23_evo/23,24):
   local_data/res/l23_evo/05.varimax_loadings.tsv
@@ -53,6 +66,9 @@ Outputs (local_data/res/it_evo/, per diagonal TOKEN):
   16.<TOKEN>_cv_modules.tsv
 Outputs (grid, once):
   16.crossspecies_axis_specificity_{cos2,cos2z,cos2cv,cca1z,cca1,cos2q}.tsv
+Outputs (--ladder, per TOKEN):
+  16.<TOKEN>_universe_ladder.tsv
+Non-default universes suffix every per-token filename ('_union', '_all').
 """
 
 import os
@@ -105,6 +121,19 @@ BOOT_NCOMP      = 2        # bootstrap stability computed for components 1..2 (P
 STABLE_THRESH   = 0.9      # bootstrap median |cos| gate for interpreting weights
 N_TOP_GENES     = 20
 SEED            = 0
+
+# --- gene universe (see module docstring) ---
+#   hvg_intersect  HVG in both species — the historical set; default, reproduces the record
+#   human_hvg      HVG in human, whatever the mouse side does
+#   mouse_hvg      HVG in mouse, whatever the human side does
+#   hvg_union      HVG in either species — primary for the expanded analysis
+# human_hvg/mouse_hvg are the two one-sided selections, and they are each other's control:
+# they separate "selecting on the better-powered dataset helps" (47,125 human cells vs
+# 4,044 mouse) from "any single-species selection works". Ordered by n in the ladder.
+UNIVERSES        = ['hvg_intersect', 'human_hvg', 'mouse_hvg', 'hvg_union']
+UNIVERSE_SUFFIX  = {'hvg_intersect': '', 'human_hvg': '_humanhvg',
+                    'mouse_hvg': '_mousehvg', 'hvg_union': '_union'}
+DEFAULT_UNIVERSE = 'hvg_intersect'
 
 # --- compat (L2/3 control on old l23_evo inputs, matching 23/24's hardcoded VX sets) ---
 COMPAT_HUMAN_VX = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']
@@ -311,18 +340,44 @@ def bootstrap_weights(X, Y, A_full, B_full, n_boot, seed):
 # Per-pair analysis (steps 1, 2, 4) — used by both the grid and the per-token detail
 # ======================================================================================
 
-def load_loadings(human_token, mouse_cfg):
-    """Return (X, Y, shared_df, human_vx, mouse_vx) for a (human, mouse) subclass pair."""
-    human = pd.read_csv(
+def load_loadings(human_token, mouse_cfg, universe=DEFAULT_UNIVERSE):
+    """Return (human_loadings, mouse_loadings, shared_df) for a (human, mouse) pair.
+
+    The 2000-HVG TSVs are always read — under the expanded universes they no longer supply
+    the loadings, but they define HVG membership. Membership is recomputed here rather than
+    read from 25's universe table so that off-diagonal grid pairs (human L4 x mouse L23),
+    which no single token's table covers, work identically.
+    """
+    if universe not in UNIVERSE_SUFFIX:
+        raise ValueError(f'unknown universe {universe!r}; expected one of {UNIVERSES}')
+    hvg_h = pd.read_csv(
         os.path.join(ITEVO_RES_DIR, f'02.human_{human_token}_varimax_loadings.tsv'),
         sep='\t', index_col=0)
-    mouse = pd.read_csv(
+    hvg_m = pd.read_csv(
         os.path.join(IT_RES_DIR, mouse_cfg['mouse_loadings']), sep='\t', index_col=0)
+
+    if universe == 'hvg_intersect':
+        human, mouse = hvg_h, hvg_m
+    else:
+        human = pd.read_csv(
+            os.path.join(ITEVO_RES_DIR, f'26.human_{human_token}_varimax_loadings_full.tsv'),
+            sep='\t', index_col=0)
+        mouse = pd.read_csv(
+            os.path.join(ITEVO_RES_DIR, f"26.mouse_{mouse_cfg['token']}_varimax_loadings_full.tsv"),
+            sep='\t', index_col=0)
+
     ortho = (pd.read_csv(IN_ORTHOLOGS, sep='\t')
              .drop_duplicates('human_symbol').drop_duplicates('mouse_symbol'))
     shared = ortho[ortho['human_symbol'].isin(human.index)
-                   & ortho['mouse_symbol'].isin(mouse.index)].reset_index(drop=True)
-    return human, mouse, shared
+                   & ortho['mouse_symbol'].isin(mouse.index)]
+    if universe == 'hvg_union':
+        shared = shared[shared['human_symbol'].isin(hvg_h.index)
+                        | shared['mouse_symbol'].isin(hvg_m.index)]
+    elif universe == 'human_hvg':
+        shared = shared[shared['human_symbol'].isin(hvg_h.index)]
+    elif universe == 'mouse_hvg':
+        shared = shared[shared['mouse_symbol'].isin(hvg_m.index)]
+    return human, mouse, shared.reset_index(drop=True)
 
 
 def analyze_pair(X, Y, seed):
@@ -435,9 +490,10 @@ def write_pairwise(token, X, Y, human_vx, mouse_vx, suffix):
     print(f'  saved {out}  (max |r| = {np.abs(mat).max():.3f})')
 
 
-def write_gate_sensitivity(token, human_token, mouse_cfg, human_vx, mouse_vx, seed, suffix):
+def write_gate_sensitivity(token, human_token, mouse_cfg, human_vx, mouse_vx, seed, suffix,
+                           universe=DEFAULT_UNIVERSE):
     """Step 5: all-10-VX and leave-one-VX-out, each against its own perm null (z)."""
-    human, mouse, shared = load_loadings(human_token, mouse_cfg)
+    human, mouse, shared = load_loadings(human_token, mouse_cfg, universe)
     Xh = human.loc[shared['human_symbol'].values]
     Ym = mouse.loc[shared['mouse_symbol'].values]
 
@@ -508,9 +564,11 @@ def write_modules(token, res, shared, suffix):
     print(f'  saved {out}  ({df["module"].nunique()} modules)')
 
 
-def run_detail(token, human_token, mouse_cfg, human_vx, mouse_vx, res, X, Y, shared, suffix):
+def run_detail(token, human_token, mouse_cfg, human_vx, mouse_vx, res, X, Y, shared, suffix,
+               universe=DEFAULT_UNIVERSE):
     """Full per-token detail (steps 3, 5, 6, 7) given a precomputed analyze_pair `res`."""
-    print(f'\n{"="*70}\n{token} — full detail  (n={res["n"]}, kx={res["kx"]}, ky={res["ky"]})')
+    print(f'\n{"="*70}\n{token} — full detail  (universe={universe}, n={res["n"]}, '
+          f'kx={res["kx"]}, ky={res["ky"]})')
     print(f'  spectrum : {np.round(res["spec"], 4)}')
     print(f'  Σcos²θ   : {res["sumcos2"]:.3f}  (frac {res["sumcos2_frac"]:.3f}, '
           f'z {res["sc2_z"]:.1f}, null {res["sc2_null_mean"]:.3f})')
@@ -535,9 +593,63 @@ def run_detail(token, human_token, mouse_cfg, human_vx, mouse_vx, res, X, Y, sha
     write_spectrum(token, res, suffix)
     write_weights(token, res, human_vx, mouse_vx, A, B, boot_h, boot_m, suffix)
     write_pairwise(token, X, Y, human_vx, mouse_vx, suffix)
-    write_gate_sensitivity(token, human_token, mouse_cfg, human_vx, mouse_vx, SEED, suffix)
+    write_gate_sensitivity(token, human_token, mouse_cfg, human_vx, mouse_vx, SEED, suffix,
+                           universe)
     write_top_genes(token, res, X, Y, shared, A, B, stable_flags, suffix)
     write_modules(token, res, shared, suffix)
+
+
+# ======================================================================================
+# Gene-universe ladder
+# ======================================================================================
+
+def run_ladder(token, mouse_cfg, human_vx, mouse_vx):
+    """Sweep the gene universe for one token; one row per universe x component.
+
+    `cos_to_hvg_intersect` is the alignment of each fitted weight vector against the
+    historical 357-gene solution — the check that widening the universe re-estimates the
+    same axis rather than finding a different one.
+    """
+    print(f'\n{"="*70}\n{token} — gene-universe ladder\n{"="*70}')
+    ref = {}
+    rows = []
+    for universe in UNIVERSES:
+        human, mouse, shared = load_loadings(token, mouse_cfg, universe)
+        X = human.loc[shared['human_symbol'].values, human_vx].values
+        Y = mouse.loc[shared['mouse_symbol'].values, mouse_vx].values
+        res = analyze_pair(X, Y, SEED)
+        _, A, B = cca_fit(X, Y)
+        boot_h, boot_m, _ = bootstrap_weights(X, Y, A, B, N_BOOT, SEED)
+        if universe == DEFAULT_UNIVERSE:
+            ref = {c: (A[:, c].copy(), B[:, c].copy()) for c in range(res['r'])}
+        for i in range(res['r']):
+            stable = (i in boot_h and i in boot_m
+                      and boot_h[i][0] >= STABLE_THRESH and boot_m[i][0] >= STABLE_THRESH)
+            rows.append({
+                'universe': universe, 'n': res['n'], 'component': f'CCA{i+1}',
+                'r': res['spec'][i], 'z': res['z'][i],
+                'r_cv_blocked': res['cv']['comp_blocked'][i],
+                'r_cv_random': res['cv']['comp_random'][i],
+                'boot_cos_median_human': boot_h[i][0] if i in boot_h else np.nan,
+                'boot_cos_median_mouse': boot_m[i][0] if i in boot_m else np.nan,
+                'stable': stable,
+                'cos_to_hvg_intersect_human': _abscos(A[:, i], ref[i][0]) if i in ref else np.nan,
+                'cos_to_hvg_intersect_mouse': _abscos(B[:, i], ref[i][1]) if i in ref else np.nan,
+                'sumcos2_frac': res['sumcos2_frac'], 'sumcos2_z': res['sc2_z'],
+                'sumcos2_cv_blocked': res['cv']['sub_blocked'],
+            })
+        print(f'  {universe:14s} n={res["n"]:6d}  '
+              f'CCA1 r={res["spec"][0]:.3f} z={res["z"][0]:5.1f} '
+              f'cv={res["cv"]["comp_blocked"][0]:.3f} boot={boot_h[0][0]:.2f}  |  '
+              f'CCA2 r={res["spec"][1]:.3f} z={res["z"][1]:5.1f} '
+              f'cv={res["cv"]["comp_blocked"][1]:.3f} boot={boot_h[1][0]:.2f}')
+
+    df = pd.DataFrame(rows)
+    out = os.path.join(OUT_RES_DIR, f'16.{token}_universe_ladder.tsv')
+    df.to_csv(out, sep='\t', index=False)
+    print(f'  saved {out}')
+    print('\n  r is a property of the gene universe — not comparable across rows.')
+    return df
 
 
 # ======================================================================================
@@ -551,6 +663,11 @@ def main():
     parser.add_argument('--no-grid', action='store_true', help='skip the 16-cell specificity grid')
     parser.add_argument('--compat', action='store_true',
                         help='L2/3 control on old l23_evo/05+18 inputs; validates plumbing')
+    parser.add_argument('--universe', choices=UNIVERSES, default=DEFAULT_UNIVERSE,
+                        help=f'gene universe (default: {DEFAULT_UNIVERSE}, reproduces the record)')
+    parser.add_argument('--ladder', action='store_true',
+                        help='sweep all universes for --tokens and write the ladder TSV; '
+                             'implies --no-grid and skips per-token detail')
     args = parser.parse_args()
     os.makedirs(OUT_RES_DIR, exist_ok=True)
 
@@ -577,6 +694,17 @@ def main():
     tokens = args.tokens or [c['token'] for c in SUBCLASSES]
     cfg_by_token = {c['token']: c for c in SUBCLASSES}
     grid_tokens = [c['token'] for c in SUBCLASSES]
+    universe = args.universe
+    suffix = UNIVERSE_SUFFIX[universe]
+
+    if args.ladder:
+        for token in tokens:
+            run_ladder(token, cfg_by_token[token],
+                       cfg_by_token[token]['human_vx'], cfg_by_token[token]['mouse_vx'])
+        print('\nDone.')
+        return
+
+    print(f'Gene universe: {universe}  (output suffix {suffix!r})')
 
     # --- grid: steps 1, 2, 4 for all 16 human × mouse pairs; reuse diagonal for detail ---
     grid = {}
@@ -586,7 +714,7 @@ def main():
                  if not args.no_grid else [(t, t) for t in tokens])
         for ht, mt in pairs:
             mcfg = cfg_by_token[mt]
-            human, mouse, shared = load_loadings(ht, mcfg)
+            human, mouse, shared = load_loadings(ht, mcfg, universe)
             hvx = cfg_by_token[ht]['human_vx']
             mvx = mcfg['mouse_vx']
             X = human.loc[shared['human_symbol'].values, hvx].values
@@ -600,22 +728,22 @@ def main():
     # --- per-token detail (steps 3, 5, 6, 7) on diagonal cells ---
     for token in tokens:
         mcfg = cfg_by_token[token]
-        human, mouse, shared = load_loadings(token, mcfg)
+        human, mouse, shared = load_loadings(token, mcfg, universe)
         hvx = cfg_by_token[token]['human_vx']
         mvx = mcfg['mouse_vx']
         X = human.loc[shared['human_symbol'].values, hvx].values
         Y = mouse.loc[shared['mouse_symbol'].values, mvx].values
         res = grid.get((token, token)) or analyze_pair(X, Y, SEED)
-        run_detail(token, token, mcfg, hvx, mvx, res, X, Y, shared, suffix='')
+        run_detail(token, token, mcfg, hvx, mvx, res, X, Y, shared, suffix, universe)
 
     # --- five specificity grids + BH q ---
     if not args.no_grid:
-        write_grids(grid, grid_tokens)
+        write_grids(grid, grid_tokens, suffix)
 
     print('\nDone.')
 
 
-def write_grids(grid, tokens):
+def write_grids(grid, tokens, suffix=''):
     print(f'\n{"="*70}\nSpecificity grids (human rows × mouse cols)')
     idx, cols = tokens, tokens
 
@@ -638,7 +766,7 @@ def write_grids(grid, tokens):
                                   columns=[f'mouse_{t}' for t in cols])
 
     for name, df in grids.items():
-        out = os.path.join(OUT_RES_DIR, f'16.crossspecies_axis_specificity_{name}.tsv')
+        out = os.path.join(OUT_RES_DIR, f'16.crossspecies_axis_specificity_{name}{suffix}.tsv')
         df.to_csv(out, sep='\t')
         print(f'  saved {out}')
     print('\nΣcos²θ (frac of min(kx,ky)):')
