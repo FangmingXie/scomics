@@ -4,13 +4,14 @@ Two figures from the same permutation nulls:
   A. a single detailed panel for L2/3 CCA1 — the headline conserved axis — with the full stats
      block (observed r, z, empirical p, null mean/sd/percentiles/max/skew, blocked-CV r, n);
   B. a grid of null distributions: rows are subclasses (L2/3, L4, L5IT, L6IT), columns are the
-     top CCAs (CCA1..CCA5), each cell a compact null + observed + blocked-CV + z/p annotation.
+     top CCAs (CCA1..CCA4), each cell a compact null + observed + blocked-CV + z/p annotation.
 
 The null shuffles mouse gene labels N_PERM times, destroying the pairing while each species'
 loading subspace is untouched. Permuting rows of Y commutes with orthonormalization
 (Qy_perm = P·Qy), so each replicate is a single k×k SVD of Qxᵀ(P·Qy) and the full spectrum is
 retained per replicate. A subclass has only k = min(kx, ky) components (L23 6, L5IT 5,
-L4/L6IT 4), so grid cells past a subclass's component count are left blank.
+L4/L6IT 4); the grid shows the first N_TOP_CCA of them and leaves any cell past a subclass's
+component count blank (at N_TOP_CCA = 4 every subclass is full, since min k = 4).
 
 Caveats read off the figures: the null is bounded on [0,1] and right-skewed, so z is a
 standardized effect size, NOT a Gaussian deviate (the largest of N_PERM null draws sits near
@@ -25,7 +26,12 @@ Reads (per TOKEN):
   data/human_mouse_orthologs.tsv
 Outputs:
   local_data/fig/it_evo/21.human_mouse_L23_cca1_significance.pdf   (detailed single panel)
-  local_data/fig/it_evo/21.human_mouse_cca_significance.pdf        (4×5 grid)
+  local_data/fig/it_evo/21.human_mouse_cca_significance.pdf        (4×4 grid, per-panel x range)
+  local_data/fig/it_evo/21.human_mouse_cca_significance_sharedx.pdf (4×4 grid, one x range +
+                                                                     common bin edges for all
+                                                                     panels — densities and
+                                                                     positions comparable across
+                                                                     the whole grid)
 """
 
 import os
@@ -44,6 +50,7 @@ FIG_DIR      = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it_evo')
 IN_ORTHOLOGS = os.path.join(PROJECT_ROOT, 'data', 'human_mouse_orthologs.tsv')
 OUT_DETAIL   = os.path.join(FIG_DIR, '21.human_mouse_L23_cca1_significance.pdf')
 OUT_GRID     = os.path.join(FIG_DIR, '21.human_mouse_cca_significance.pdf')
+OUT_GRID_SX  = os.path.join(FIG_DIR, '21.human_mouse_cca_significance_sharedx.pdf')
 
 # --- Gate-A VX sets, mirror script 16 ---
 SUBCLASSES = [
@@ -58,7 +65,7 @@ SUBCLASSES = [
 ]
 
 # --- config ---
-N_TOP_CCA = 5          # columns: CCA1..CCA5
+N_TOP_CCA = 4          # columns: CCA1..CCA4 (every subclass has at least this many)
 N_PERM    = 20000      # large so the null tail (hence empirical p) is well resolved
 SEED      = 0
 N_BINS    = 60
@@ -172,10 +179,24 @@ def detail_panel(res, comp, out_path):
     print(f'  Saved {out_path}')
 
 
-# --- figure B: 4×5 grid (rows = subclasses, cols = CCA1..CCA5) ---
-def grid_figure(results, out_path):
+# --- figure B: 4×4 grid (rows = subclasses, cols = CCA1..CCA4) ---
+def grid_figure(results, out_path, shared_x=False):
+    """Grid of nulls. shared_x puts every panel on one x range with common bin edges, so
+    null positions and densities are comparable across the whole grid; otherwise each panel
+    autoscales to its own null + observed + CV (better use of panel width, no cross-reading)."""
     nrows, ncols = len(results), N_TOP_CCA
-    fig, axes = plt.subplots(nrows, ncols, figsize=(3.3 * ncols, 2.7 * nrows), squeeze=False)
+    panel_max = [max(res['obs'][c], res['cv'][c], np.percentile(res['null'][:, c], 99))
+                 for res in results for c in range(min(ncols, res['k']))]
+    xmax = max(panel_max) * 1.15
+    bins = np.linspace(0, xmax, N_BINS + 1) if shared_x else N_BINS
+
+    # bottom-most row that actually has a panel, per column: blank cells sit in the last row
+    # for the short subclasses, so "put the x label on row nrows-1" would leave those columns
+    # unlabelled (and with sharex, unticked as well).
+    last_row = {c: max(r for r, res in enumerate(results) if c < res['k']) for c in range(ncols)}
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.3 * ncols, 2.7 * nrows), squeeze=False,
+                             sharex=shared_x)
     for r, res in enumerate(results):
         for c in range(ncols):
             ax = axes[r][c]
@@ -189,7 +210,7 @@ def grid_figure(results, out_path):
             n_ge = int((null >= obs).sum())
             p_str = f'p<{1/(N_PERM+1):.0e}' if n_ge == 0 else f'p={(1 + n_ge) / (N_PERM + 1):.1e}'
 
-            ax.hist(null, bins=N_BINS, density=True, color='#bdbdbd', edgecolor='none')
+            ax.hist(null, bins=bins, density=True, color='#bdbdbd', edgecolor='none')
             ax.axvline(np.percentile(null, 99), color='0.45', lw=0.8, ls='--')
             ax.axvline(res['cv'][c], color='#1f77b4', lw=1.4, ls='-.')
             ax.axvline(obs, color='#d62728', lw=2.0)
@@ -199,14 +220,16 @@ def grid_figure(results, out_path):
                     f'EV h/m={res["ev_h"][c]:.0%}/{res["ev_m"][c]:.0%}',
                     transform=ax.transAxes, ha='right', va='top', fontsize=8, family='monospace',
                     bbox=dict(boxstyle='round', facecolor='white', edgecolor='0.75', alpha=0.9))
-            ax.set_xlim(0, max(obs, res['cv'][c], np.percentile(null, 99)) * 1.15)
+            ax.set_xlim(0, xmax if shared_x
+                        else max(obs, res['cv'][c], np.percentile(null, 99)) * 1.15)
             ax.set_yticks([])
             if r == 0:
                 ax.set_title(f'CCA{c + 1}', fontsize=11)
             if c == 0:
                 ax.set_ylabel(f'{res["token"]}\n(n={res["n"]})', fontsize=10)
-            if r == nrows - 1:
+            if r == last_row[c]:
                 ax.set_xlabel('canonical corr', fontsize=8)
+                ax.tick_params(labelbottom=True)   # sharex hides these off the last row
             sns.despine(ax=ax, left=True)
 
     handles = [
@@ -217,8 +240,10 @@ def grid_figure(results, out_path):
     ]
     fig.legend(handles=handles, loc='upper center', ncol=4, fontsize=9, frameon=False,
                bbox_to_anchor=(0.5, 1.005))
+    scale_note = ('shared x range and bin edges' if shared_x else 'x range autoscaled per panel')
     fig.suptitle('Cross-species canonical correlations vs the gene-label permutation null '
-                 '(z is a bounded-support effect size, not a Gaussian deviate)', y=1.03, fontsize=12)
+                 '(z is a bounded-support effect size, not a Gaussian deviate)\n'
+                 f'{scale_note}', y=1.03, fontsize=12)
     fig.tight_layout()
     fig.savefig(out_path, bbox_inches='tight', dpi=300)
     plt.close(fig)
@@ -234,4 +259,5 @@ for res in results:
 
 detail_panel(by_token['L23'], 0, OUT_DETAIL)
 grid_figure(results, OUT_GRID)
+grid_figure(results, OUT_GRID_SX, shared_x=True)
 print('\nDone.')
