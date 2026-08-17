@@ -1,11 +1,25 @@
 """PC1-vs-gene-expression views (incl. per-bin boxplots) — mouse Cheng22 & human Jorstad23 L2/3 IT.
 
-Short-gene-list variant of script 39 (genes: Grm1, Kcnh5, Dscaml1, Ntng1). Produces the same
-three PDFs as 39 plus a fourth PDF that shows, per gene, a boxplot of expression across 10
-PC1 bins (mouse and human side by side) — a distributional alternative to the scatter +
-mean-expression view. PC1 is read from the cached PCHA embeddings used by scripts 21.viz /
-25.viz (no recompute); the same display-only PC1 sign flip is applied so orientation matches
-those archetype figures.
+Short-gene-list variant of script 39. Produces the same three PDFs as 39, plus a fourth PDF
+that shows, per gene, a boxplot of expression across 10 PC1 bins (mouse and human side by
+side) — a distributional alternative to the scatter + mean-expression view — plus a fifth
+PDF that collapses ALL selected genes into one figure: a gene x PC1-bin heatmap per species
+(mouse left, human right). PC1 is read from the cached PCHA embeddings used by scripts
+21.viz / 25.viz (no recompute); the same display-only PC1 sign flip is applied so
+orientation matches those archetype figures.
+
+Heatmap panel details:
+  - Cell value = that gene's mean log2(CP10k+1) over cells in one of N_PC1_BINS equal-width
+    bins spanning the species' own PC1 min–max (same binning as the mean±std overlay), so
+    mouse and human columns are relative-PC1 comparable.
+  - Each gene row is z-scored WITHIN its species across that species' bins (mean 0, sd 1), so
+    every gene's PC1 shape reads at full contrast and the diverging colormap is centered on
+    each gene's own species-specific mean. Mouse-vs-human amplitude is therefore NOT
+    comparable across the two panels — only the shape is. Color limits are symmetric and
+    shared by both panels (+/- the largest |z| over all genes and both species).
+  - Rows are ordered ONCE by hierarchical clustering (correlation distance, average linkage,
+    optimal leaf ordering) of the concatenated mouse+human z-scored profile, and that single
+    order is applied to both panels so rows can be read across species.
 
 Gene expression (both species normalized identically for comparability):
   - Mouse h5ad holds raw counts in X          -> log2(CP10k + 1) (as in script 21).
@@ -23,6 +37,7 @@ Outputs:
   local_data/fig/l23_evo/40.pc1_pc2_gene_expr_mouse_human.pdf
   local_data/fig/l23_evo/40.pc1_binmean_overlay_mouse_human.pdf
   local_data/fig/l23_evo/40.pc1_gene_expr_boxbins_mouse_human.pdf
+  local_data/fig/l23_evo/40.pc1_gene_expr_heatmap_mouse_human.pdf
 
 Usage:
   python 40.viz.pc1_gene_expr_boxbins_mouse_human.py [--genes Grm1 Kcnh5 ...]
@@ -36,6 +51,7 @@ import pandas as pd
 import anndata as ad
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from scipy.cluster.hierarchy import linkage, leaves_list
 import seaborn as sns
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -51,10 +67,12 @@ OUT_PDF     = os.path.join(OUT_FIG_DIR, '40.pc1_vs_gene_expr_mouse_human.pdf')
 OUT_PDF_EMB = os.path.join(OUT_FIG_DIR, '40.pc1_pc2_gene_expr_mouse_human.pdf')
 OUT_PDF_OVL = os.path.join(OUT_FIG_DIR, '40.pc1_binmean_overlay_mouse_human.pdf')
 OUT_PDF_BOX = os.path.join(OUT_FIG_DIR, '40.pc1_gene_expr_boxbins_mouse_human.pdf')
+OUT_PDF_HEAT = os.path.join(OUT_FIG_DIR, '40.pc1_gene_expr_heatmap_mouse_human.pdf')
 
 # --- parameters ---
 MOUSE_SUBCLASS = 'L2/3'
-GENES          = ['Grm1', 'Kcnh5', 'Dscaml1', 'Ntng1', 'Cdh13', 'Robo1', 'Nfia']   # mouse symbols
+GENES          = ['Grm1', 'Dscaml1', 'Kcnh5', 'Ntng1', 'Cdh13', 'Nfia', 'Rorb',    # mouse symbols
+                  'Epha6', 'Pde1a', 'Cntnap2', 'Tox', 'Astn2', 'Gpc6']
 # Display-only PC1/PC2 sign flips, matching archetype figures 21.viz / 25.viz.
 MOUSE_PC1_SIGN = 1.0    # mouse FLIP = [1, -1] -> PC1 unchanged, PC2 flipped
 MOUSE_PC2_SIGN = -1.0
@@ -68,6 +86,9 @@ EMB_PCTILE     = (2, 98)     # per-panel color-scale clip percentiles
 MOUSE_COLOR    = '#2166ac'   # mouse curve/boxes
 HUMAN_COLOR    = '#b2182b'   # human curve/boxes
 FILL_ALPHA     = 0.3         # alpha for the +/- std fill bands and box faces
+HEAT_CMAP      = 'RdBu_r'    # gene x PC1-bin heatmap color (per-gene z, symmetric about 0)
+CLUSTER_METRIC = 'correlation'   # row distance for hierarchical clustering (PC1 shape)
+CLUSTER_METHOD = 'average'       # linkage method
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--genes', nargs='+', default=GENES,
@@ -118,6 +139,24 @@ def binned_groups(x, y, n_bins):
             positions.append(b + 1)
             groups.append(vals)
     return positions, groups
+
+
+def binmean_matrix(pc1, expr_df, gene_list, species):
+    """Rows = genes, cols = N_PC1_BINS relative PC1 bins; value = mean log2(CP10k+1) in bin.
+
+    Uses the same relative binning as binned_stats_relative, so mouse and human matrices
+    have column-comparable (relative-PC1) bins. Fails fast if any bin is empty, since an
+    empty bin would leave a NaN that hierarchical clustering cannot consume.
+    """
+    rows = []
+    for g in gene_list:
+        _, means, _ = binned_stats_relative(pc1, expr_df[g].values, N_PC1_BINS)
+        empty = np.where(np.isnan(means))[0]
+        if empty.size:
+            raise ValueError(f'{species} {g}: PC1 bins {(empty + 1).tolist()} are empty at '
+                             f'N_PC1_BINS={N_PC1_BINS}; cannot build the heatmap.')
+        rows.append(means)
+    return np.vstack(rows)
 
 
 def load_mouse_expr(genes_mouse, cell_index):
@@ -318,4 +357,55 @@ with PdfPages(OUT_PDF_BOX) as pdf:
         plt.close(fig)
 
 print(f'Saved {OUT_PDF_BOX}')
+
+# --- single-page PDF: gene x PC1-bin heatmap per species, shared clustered row order ---
+print(f'Writing {OUT_PDF_HEAT} ({len(genes)} genes x {N_PC1_BINS} PC1 bins)...')
+mouse_mat = binmean_matrix(mouse_pc1, mouse_expr, genes, 'mouse')
+human_mat = binmean_matrix(human_pc1, human_expr, genes_human, 'human')
+
+# per-gene z-scoring WITHIN each species (each row centered on its own species-specific mean)
+def zscore_rows(mat, species):
+    """Z-score each row across its bins (mean 0, sd 1); fail fast on flat rows."""
+    sd  = mat.std(axis=1, keepdims=True)
+    bad = np.where(sd[:, 0] == 0)[0]
+    if bad.size:
+        raise ValueError(f'{species} genes with flat expression across all PC1 bins '
+                         f'(cannot z-score or cluster): {[genes[i] for i in bad]}')
+    return (mat - mat.mean(axis=1, keepdims=True)) / sd
+
+
+mouse_scaled = zscore_rows(mouse_mat, 'mouse')
+human_scaled = zscore_rows(human_mat, 'human')
+joint_scaled = np.hstack([mouse_scaled, human_scaled])
+zlim = np.abs(joint_scaled).max()   # symmetric, shared color limits so 0 = each gene's mean
+
+# one row order from the joint profile, applied to both panels so rows read across species
+row_order = leaves_list(linkage(joint_scaled, method=CLUSTER_METHOD, metric=CLUSTER_METRIC,
+                                optimal_ordering=True))
+print(f'Row order ({CLUSTER_METHOD}/{CLUSTER_METRIC} clustering): {[genes[i] for i in row_order]}')
+
+fig, axes = plt.subplots(1, 2, figsize=(9.5, 0.34 * len(genes) + 2.0))
+for ax, mat, gene_syms, sp_title, label_side in [
+    (axes[0], mouse_scaled[row_order], [genes[i] for i in row_order],
+     'Cheng22 mouse L2/3 IT', 'left'),
+    (axes[1], human_scaled[row_order], [genes_human[i] for i in row_order],
+     'Jorstad23 human L2/3 IT', 'right'),
+]:
+    im = ax.imshow(mat, aspect='auto', cmap=HEAT_CMAP, vmin=-zlim, vmax=zlim)
+    ax.set_xticks(range(N_PC1_BINS))
+    ax.set_xticklabels(range(1, N_PC1_BINS + 1))
+    ax.set_xlabel(f'PC1 bin (1..{N_PC1_BINS}, low→high)')
+    ax.set_yticks(range(len(gene_syms)))
+    ax.set_yticklabels(gene_syms, fontsize=8)
+    ax.yaxis.set_label_position(label_side)
+    ax.yaxis.set_ticks_position(label_side)
+    ax.set_title(sp_title)
+
+fig.colorbar(im, ax=axes, label='z-scored mean expr\n(per gene, within each species)',
+             shrink=0.6, pad=0.1)
+fig.suptitle(f'{len(genes)} genes — mean expression over PC1 bins (rows: hierarchical clustering)')
+fig.savefig(OUT_PDF_HEAT, bbox_inches='tight', dpi=DPI)
+plt.close(fig)
+
+print(f'Saved {OUT_PDF_HEAT}')
 print('Done.')
