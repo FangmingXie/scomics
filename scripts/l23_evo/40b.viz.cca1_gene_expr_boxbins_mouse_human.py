@@ -1,12 +1,9 @@
 """CCA1-vs-gene-expression views — mouse Cheng22 & human Jorstad23 L2/3 IT.
 
-Cross-species-axis counterpart of script 40: every view is identical, but cells are ordered
-along the CONSERVED CCA1 axis instead of each species' own PC1. Five PDFs:
-  1. CCA1 vs expression scatter + bin-mean overlay      (one gene per page)
-  2. CCA1 x CCA2 embedding colored by expression        (one gene per page)
-  3. mouse+human mean +/- std over 10 relative bins     (one gene per page)
-  4. per-bin boxplots, mouse | human                    (one gene per page)
-  5. gene x CCA1-bin heatmap per species, all genes in one figure
+Cross-species-axis counterpart of script 40: both views are identical, but cells are ordered
+along the CONSERVED CCA1 axis instead of each species' own PC1. Two PDFs:
+  1. per-bin boxplots, mouse | human                    (one gene per page)
+  2. gene x CCA1-bin heatmap per species, all genes in one figure
 
 Why CCA1 rather than PC1: PC1 is fit independently per species, so mouse PC1 and human PC1
 are only loosely comparable. CCA1 is the pair of directions (one per species) whose ortholog
@@ -14,7 +11,7 @@ gene loadings are maximally correlated across species (r = 0.623, the only canon
 component for L2/3) — so bin k means the same thing in both panels, and mouse-vs-human shape
 differences are interpretable rather than an artifact of two unrelated axes.
 
-A cell's CCA coordinate follows script it_evo/18b exactly: `(VX coords - mean) . a_vx`, where
+A cell's CCA1 coordinate follows script it_evo/18b exactly: `(VX coords - mean) . a_vx`, where
 `a_vx` is the Gate-A VX canonical weight vector from it_evo/16 (normalized and sign-fixed
 there). Both species are reflected along CCA1 (axis labelled CCA1'), matching 18b/18c, so the
 two panels share one orientation. The cell sets are identical to script 40's (4044 mouse,
@@ -31,8 +28,10 @@ Heatmap panel details (same as script 40):
     comparable.
   - Each gene row is z-scored WITHIN its species across that species' bins (mean 0, sd 1), so
     every gene's CCA1 shape reads at full contrast. Mouse-vs-human amplitude is therefore NOT
-    comparable across panels — only shape is. Color limits are symmetric and shared by both
-    panels (+/- the largest |z| over all genes and both species).
+    comparable across panels — only shape is.
+  - Color limits are FIXED at +/- ZLIM (not data-driven), so panels are directly comparable
+    across genes, across species and across scripts 40b/40c. |z| beyond ZLIM is clipped, which
+    the colorbar marks with arrowheads.
   - Rows are ordered ONCE by hierarchical clustering (correlation distance, average linkage,
     optimal leaf ordering) of the concatenated mouse+human z-scored profile, and that single
     order is applied to both panels so rows can be read across species.
@@ -45,9 +44,6 @@ Reads:
   links/l23_evo/cheng22_mouse_IT_P28.h5ad
   links/l23_evo/jorstad23_human_WithinArea_L23IT.h5ad
 Outputs:
-  local_data/fig/l23_evo/40b.cca1_vs_gene_expr_mouse_human.pdf
-  local_data/fig/l23_evo/40b.cca1_cca2_gene_expr_mouse_human.pdf
-  local_data/fig/l23_evo/40b.cca1_binmean_overlay_mouse_human.pdf
   local_data/fig/l23_evo/40b.cca1_gene_expr_boxbins_mouse_human.pdf
   local_data/fig/l23_evo/40b.cca1_gene_expr_heatmap_mouse_human.pdf
 
@@ -68,45 +64,37 @@ import seaborn as sns
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # --- file paths ---
-OUT_FIG_DIR   = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'l23_evo')
-IT_RES_DIR    = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
+OUT_FIG_DIR    = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'l23_evo')
+IT_RES_DIR     = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 IT_EVO_RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it_evo')
-IN_MOUSE_VX   = os.path.join(IT_RES_DIR, '19.cheng22_L23_varimax_coords.tsv')
-IN_HUMAN_VX   = os.path.join(IT_EVO_RES_DIR, '02.human_L23_varimax_coords.tsv')
-IN_MOUSE_W    = os.path.join(IT_EVO_RES_DIR, '16.L23_axis_cca_weights_mouse.tsv')
-IN_HUMAN_W    = os.path.join(IT_EVO_RES_DIR, '16.L23_axis_cca_weights_human.tsv')
-INPUT_MOUSE   = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'cheng22_mouse_IT_P28.h5ad')
-INPUT_HUMAN   = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'jorstad23_human_WithinArea_L23IT.h5ad')
-OUT_PDF       = os.path.join(OUT_FIG_DIR, '40b.cca1_vs_gene_expr_mouse_human.pdf')
-OUT_PDF_EMB   = os.path.join(OUT_FIG_DIR, '40b.cca1_cca2_gene_expr_mouse_human.pdf')
-OUT_PDF_OVL   = os.path.join(OUT_FIG_DIR, '40b.cca1_binmean_overlay_mouse_human.pdf')
-OUT_PDF_BOX   = os.path.join(OUT_FIG_DIR, '40b.cca1_gene_expr_boxbins_mouse_human.pdf')
-OUT_PDF_HEAT  = os.path.join(OUT_FIG_DIR, '40b.cca1_gene_expr_heatmap_mouse_human.pdf')
+IN_MOUSE_VX    = os.path.join(IT_RES_DIR, '19.cheng22_L23_varimax_coords.tsv')
+IN_HUMAN_VX    = os.path.join(IT_EVO_RES_DIR, '02.human_L23_varimax_coords.tsv')
+IN_MOUSE_W     = os.path.join(IT_EVO_RES_DIR, '16.L23_axis_cca_weights_mouse.tsv')
+IN_HUMAN_W     = os.path.join(IT_EVO_RES_DIR, '16.L23_axis_cca_weights_human.tsv')
+INPUT_MOUSE    = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'cheng22_mouse_IT_P28.h5ad')
+INPUT_HUMAN    = os.path.join(PROJECT_ROOT, 'links', 'l23_evo', 'jorstad23_human_WithinArea_L23IT.h5ad')
+OUT_PDF_BOX    = os.path.join(OUT_FIG_DIR, '40b.cca1_gene_expr_boxbins_mouse_human.pdf')
+OUT_PDF_HEAT   = os.path.join(OUT_FIG_DIR, '40b.cca1_gene_expr_heatmap_mouse_human.pdf')
 
 # --- parameters ---
 MOUSE_SUBCLASS = 'L2/3'
 GENES          = ['Grm1', 'Dscaml1', 'Kcnh5', 'Ntng1', 'Cdh13', 'Nfia', 'Rorb',    # mouse symbols
                   'Epha6', 'Pde1a', 'Cntnap2', 'Tox', 'Astn2', 'Gpc6']
-CCA_AXES       = ['CCA1', 'CCA2']
+CCA_AXIS       = 'CCA1'
 HUMAN_VX_COLS  = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']   # Gate-A human L2/3 (it_evo 04/16)
 MOUSE_VX_COLS  = ['VX1', 'VX2', 'VX5', 'VX7', 'VX8', 'VX9']    # Gate-A mouse L2/3 (it_evo 05/16)
 # Display-only CCA1 reflection, applied to BOTH species exactly as in it_evo 18b/18c, so the
 # two panels share one orientation. Cosmetic: canonical correlations are unchanged.
 MOUSE_CCA1_SIGN = -1.0
 HUMAN_CCA1_SIGN = -1.0
-MOUSE_CCA2_SIGN = 1.0
-HUMAN_CCA2_SIGN = 1.0
-CCA1_LABEL     = "CCA1'"     # primed: reflected for display (see signs above)
-CCA2_LABEL     = 'CCA2'
-POINT_SIZE     = 4
+AXIS_LABEL     = "CCA1'"     # primed: reflected for display (see signs above)
 DPI            = 300
-N_CCA1_BINS    = 10          # CCA1 bins for the mean-expression overlay line, boxplots, heatmap
-EMB_CMAP       = 'RdBu_r'    # CCA1-vs-CCA2 expression colormap
-EMB_PCTILE     = (2, 98)     # per-panel color-scale clip percentiles
-MOUSE_COLOR    = '#2166ac'   # mouse curve/boxes
-HUMAN_COLOR    = '#b2182b'   # human curve/boxes
-FILL_ALPHA     = 0.3         # alpha for the +/- std fill bands and box faces
+N_CCA1_BINS    = 10          # CCA1 bins for the boxplots and the heatmap
+MOUSE_COLOR    = '#2166ac'   # mouse boxes
+HUMAN_COLOR    = '#b2182b'   # human boxes
+FILL_ALPHA     = 0.3         # alpha for the box faces
 HEAT_CMAP      = 'RdBu_r'    # gene x CCA1-bin heatmap color (per-gene z, symmetric about 0)
+ZLIM           = 2.5         # fixed heatmap color limits (+/-); |z| beyond this is clipped
 CLUSTER_METRIC = 'correlation'   # row distance for hierarchical clustering (CCA1 shape)
 CLUSTER_METHOD = 'average'       # linkage method
 
@@ -119,11 +107,11 @@ genes = list(args.genes)
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
 
-def cca_coords(vx_path, weights_path, vx_cols, cca1_sign, cca2_sign, species):
-    """Project one species' cells onto CCA1/CCA2: (VX coords - mean) . a_vx, as in it_evo 18b.
+def cca_axis(vx_path, weights_path, vx_cols, sign, species):
+    """Project one species' cells onto CCA_AXIS: (VX coords - mean) . a_vx, as in it_evo 18b.
 
-    Returns (cell_index, cca1, cca2, canonical_r). Display signs are applied last; they are
-    cosmetic reflections and leave the canonical correlations untouched.
+    Returns (cell_index, coord, canonical_r). The display sign is applied last; it is a
+    cosmetic reflection and leaves the canonical correlation untouched.
     """
     vx_df   = pd.read_csv(vx_path, sep='\t', index_col=0)
     weights = pd.read_csv(weights_path, sep='\t', index_col=0)
@@ -132,25 +120,14 @@ def cca_coords(vx_path, weights_path, vx_cols, cca1_sign, cca2_sign, species):
     if missing:
         raise ValueError(f'{species}: Gate-A VX columns {missing} absent from {vx_path}')
 
-    W = weights.loc[CCA_AXES, vx_cols].values.T    # (n_vx x 2), normalized + sign-fixed by 16
-    r_cca = weights.loc[CCA_AXES, 'canonical_r'].values
-    stable = weights.loc[CCA_AXES, 'stable'].values
-    print(f'  {species}: {vx_df.shape[0]} cells, VX {vx_cols}, '
-          f'r(CCA1)={r_cca[0]:.3f} (stable={stable[0]}), r(CCA2)={r_cca[1]:.3f} (stable={stable[1]})')
+    # the weight row mixes floats with the bool `stable` column, so force float for the matmul
+    w = weights.loc[CCA_AXIS, vx_cols].to_numpy(dtype=float)   # normalized + sign-fixed by 16
+    r_cca = float(weights.loc[CCA_AXIS, 'canonical_r'])
+    print(f'  {species}: {vx_df.shape[0]} cells, VX {vx_cols}, r({CCA_AXIS})={r_cca:.3f} '
+          f'(stable={weights.loc[CCA_AXIS, "stable"]})')
 
     C = vx_df[vx_cols].values
-    cca = (C - C.mean(axis=0)) @ W
-    return vx_df.index, cca[:, 0] * cca1_sign, cca[:, 1] * cca2_sign, r_cca
-
-
-def binned_mean(x, y, n_bins):
-    """Mean of y within n_bins equal-width bins over x; returns (bin_centers, means) for non-empty bins."""
-    edges   = np.linspace(np.min(x), np.max(x), n_bins + 1)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    idx     = np.clip(np.digitize(x, edges[1:-1]), 0, n_bins - 1)
-    means   = np.array([y[idx == b].mean() if np.any(idx == b) else np.nan for b in range(n_bins)])
-    keep    = ~np.isnan(means)
-    return centers[keep], means[keep]
+    return vx_df.index, ((C - C.mean(axis=0)) @ w) * sign, r_cca
 
 
 def binned_stats_relative(x, y, n_bins):
@@ -158,7 +135,7 @@ def binned_stats_relative(x, y, n_bins):
 
     Returns (rel_centers, means, stds) for all n_bins. rel_centers are the bin centers
     mapped to [0, 1] ((b+0.5)/n_bins), so different-range inputs (mouse vs human CCA1)
-    overlay on exactly the same n_bins x-positions. Empty bins yield NaN mean/std.
+    sit on exactly the same n_bins x-positions. Empty bins yield NaN mean/std.
     """
     edges   = np.linspace(np.min(x), np.max(x), n_bins + 1)
     idx     = np.clip(np.digitize(x, edges[1:-1]), 0, n_bins - 1)
@@ -185,7 +162,7 @@ def binned_groups(x, y, n_bins):
     return positions, groups
 
 
-def binmean_matrix(cca1, expr_df, gene_list, species):
+def binmean_matrix(coord, expr_df, gene_list, species):
     """Rows = genes, cols = N_CCA1_BINS relative CCA1 bins; value = mean log2(CP10k+1) in bin.
 
     Uses the same relative binning as binned_stats_relative, so mouse and human matrices
@@ -194,13 +171,23 @@ def binmean_matrix(cca1, expr_df, gene_list, species):
     """
     rows = []
     for g in gene_list:
-        _, means, _ = binned_stats_relative(cca1, expr_df[g].values, N_CCA1_BINS)
+        _, means, _ = binned_stats_relative(coord, expr_df[g].values, N_CCA1_BINS)
         empty = np.where(np.isnan(means))[0]
         if empty.size:
             raise ValueError(f'{species} {g}: CCA1 bins {(empty + 1).tolist()} are empty at '
                              f'N_CCA1_BINS={N_CCA1_BINS}; cannot build the heatmap.')
         rows.append(means)
     return np.vstack(rows)
+
+
+def zscore_rows(mat, species):
+    """Z-score each row across its bins (mean 0, sd 1); fail fast on flat rows."""
+    sd  = mat.std(axis=1, keepdims=True)
+    bad = np.where(sd[:, 0] == 0)[0]
+    if bad.size:
+        raise ValueError(f'{species} genes with flat expression across all {AXIS_LABEL} bins '
+                         f'(cannot z-score or cluster): {[genes[i] for i in bad]}')
+    return (mat - mat.mean(axis=1, keepdims=True)) / sd
 
 
 def load_mouse_expr(genes_mouse, cell_index):
@@ -281,22 +268,22 @@ def draw_boxbins(ax, positions, groups, color, sym, sp_title):
         median.set_color('black')
     ax.set_xticks(range(1, N_CCA1_BINS + 1))
     ax.set_xticklabels(range(1, N_CCA1_BINS + 1))
-    ax.set_xlabel(f'{CCA1_LABEL} bin (1..{N_CCA1_BINS}, low→high)')
+    ax.set_xlabel(f'{AXIS_LABEL} bin (1..{N_CCA1_BINS}, low→high)')
     ax.set_ylabel(f'{sym} log2(CP10k+1) expr')
     ax.set_title(sp_title)
     sns.despine(ax=ax)
 
 
-# --- project cells onto the conserved CCA axes (display-reflected along CCA1) ---
-print('Projecting cells onto the cross-species CCA axes...')
-mouse_index, mouse_cca1, mouse_cca2, mouse_r = cca_coords(
-    IN_MOUSE_VX, IN_MOUSE_W, MOUSE_VX_COLS, MOUSE_CCA1_SIGN, MOUSE_CCA2_SIGN, 'mouse')
-human_index, human_cca1, human_cca2, human_r = cca_coords(
-    IN_HUMAN_VX, IN_HUMAN_W, HUMAN_VX_COLS, HUMAN_CCA1_SIGN, HUMAN_CCA2_SIGN, 'human')
-if not np.allclose(mouse_r, human_r):
+# --- project cells onto the conserved CCA1 axis (display-reflected) ---
+print('Projecting cells onto the cross-species CCA1 axis...')
+mouse_index, mouse_cca1, mouse_r = cca_axis(
+    IN_MOUSE_VX, IN_MOUSE_W, MOUSE_VX_COLS, MOUSE_CCA1_SIGN, 'mouse')
+human_index, human_cca1, human_r = cca_axis(
+    IN_HUMAN_VX, IN_HUMAN_W, HUMAN_VX_COLS, HUMAN_CCA1_SIGN, 'human')
+if not np.isclose(mouse_r, human_r):
     raise ValueError(f'Canonical correlations differ between species ({mouse_r} vs {human_r}); '
                      'the two weight tables must come from the same CCA fit.')
-R_CCA1 = float(mouse_r[0])
+R_CCA1 = mouse_r
 
 # --- gene symbols per species ---
 genes_human = [g.upper() for g in genes]
@@ -307,86 +294,7 @@ human_expr = load_human_expr(genes_human, human_index)
 
 MOUSE_TITLE = 'Cheng22 mouse L2/3 IT'
 HUMAN_TITLE = 'Jorstad23 human L2/3 IT'
-
-# --- multi-page PDF: one gene per page, mouse (left) + human (right) ---
 plt.rcParams['pdf.fonttype'] = 42   # editable vector text
-print(f'Writing {OUT_PDF} ({len(genes)} pages)...')
-with PdfPages(OUT_PDF) as pdf:
-    for g_mouse, g_human in zip(genes, genes_human):
-        fig, axes = plt.subplots(1, 2, figsize=(9, 4.2))
-
-        for ax, cca1, vals, sym, sp_title in [
-            (axes[0], mouse_cca1, mouse_expr[g_mouse].values, g_mouse, MOUSE_TITLE),
-            (axes[1], human_cca1, human_expr[g_human].values, g_human, HUMAN_TITLE),
-        ]:
-            ax.scatter(cca1, vals, s=POINT_SIZE, linewidths=0, color='#bbbbbb', rasterized=True)
-            bc, bm = binned_mean(cca1, vals, N_CCA1_BINS)   # bin-mean overlay (vector)
-            ax.plot(bc, bm, '-o', color='#c0392b', linewidth=1.5, markersize=4,
-                    zorder=3, label=f'mean over {N_CCA1_BINS} {CCA1_LABEL} bins')
-            ax.set_xlabel(CCA1_LABEL)
-            ax.set_ylabel(f'{sym} (log-norm expr)')
-            ax.set_title(sp_title)
-            ax.legend(frameon=False, fontsize=8, loc='upper right')
-            sns.despine(ax=ax)
-
-        fig.suptitle(f'{g_mouse} / {g_human} — {CCA1_LABEL} vs expression (r = {R_CCA1:.3f})')
-        fig.tight_layout()
-        pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
-        plt.close(fig)
-
-print(f'Saved {OUT_PDF}')
-
-# --- multi-page PDF: one gene per page, CCA1-vs-CCA2 colored by expression ---
-print(f'Writing {OUT_PDF_EMB} ({len(genes)} pages)...')
-with PdfPages(OUT_PDF_EMB) as pdf:
-    for g_mouse, g_human in zip(genes, genes_human):
-        fig, axes = plt.subplots(1, 2, figsize=(9.6, 4.2))
-
-        for ax, cca1, cca2, vals, sym, sp_title in [
-            (axes[0], mouse_cca1, mouse_cca2, mouse_expr[g_mouse].values, g_mouse, MOUSE_TITLE),
-            (axes[1], human_cca1, human_cca2, human_expr[g_human].values, g_human, HUMAN_TITLE),
-        ]:
-            vmin, vmax = np.nanpercentile(vals, EMB_PCTILE)
-            sc = ax.scatter(cca1, cca2, c=vals, cmap=EMB_CMAP, vmin=vmin, vmax=vmax,
-                            s=POINT_SIZE, linewidths=0, rasterized=True)
-            ax.set_aspect('equal', adjustable='box')   # true CCA1/CCA2 geometry
-            ax.set_xlabel(CCA1_LABEL)
-            ax.set_ylabel(CCA2_LABEL)
-            ax.set_title(sp_title)
-            fig.colorbar(sc, ax=ax, label=f'{sym} (log-norm expr)', shrink=0.8)
-            sns.despine(ax=ax)
-
-        fig.suptitle(f'{g_mouse} / {g_human} — {CCA1_LABEL} vs {CCA2_LABEL}, colored by expression')
-        fig.tight_layout()
-        pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
-        plt.close(fig)
-
-print(f'Saved {OUT_PDF_EMB}')
-
-# --- multi-page PDF: one gene per page, mouse+human mean +/- std over 10 relative CCA1 bins ---
-print(f'Writing {OUT_PDF_OVL} ({len(genes)} pages)...')
-with PdfPages(OUT_PDF_OVL) as pdf:
-    for g_mouse, g_human in zip(genes, genes_human):
-        fig, ax = plt.subplots(figsize=(5.4, 4.2))
-
-        for cca1, vals, color, lbl in [
-            (mouse_cca1, mouse_expr[g_mouse].values, MOUSE_COLOR, f'mouse {g_mouse}'),
-            (human_cca1, human_expr[g_human].values, HUMAN_COLOR, f'human {g_human}'),
-        ]:
-            bc, bm, bs = binned_stats_relative(cca1, vals, N_CCA1_BINS)
-            ax.fill_between(bc, bm - bs, bm + bs, color=color, alpha=FILL_ALPHA, linewidth=0)
-            ax.plot(bc, bm, '-o', color=color, linewidth=1.5, markersize=4, label=lbl)
-
-        ax.set_xlabel(f'{CCA1_LABEL} (relative, per-species min–max; {N_CCA1_BINS} bins)')
-        ax.set_ylabel('log2(CP10k+1) expr')
-        ax.set_title(f'{g_mouse} / {g_human} — mean ± std over {CCA1_LABEL} bins')
-        ax.legend(frameon=False, fontsize=8)
-        sns.despine(ax=ax)
-        fig.tight_layout()
-        pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
-        plt.close(fig)
-
-print(f'Saved {OUT_PDF_OVL}')
 
 # --- multi-page PDF: one gene per page, per-bin boxplots (mouse left, human right) ---
 print(f'Writing {OUT_PDF_BOX} ({len(genes)} pages)...')
@@ -394,14 +302,15 @@ with PdfPages(OUT_PDF_BOX) as pdf:
     for g_mouse, g_human in zip(genes, genes_human):
         fig, axes = plt.subplots(1, 2, figsize=(10, 4.2), sharey=True)
 
-        for ax, cca1, vals, color, sym, sp_title in [
+        for ax, coord, vals, color, sym, sp_title in [
             (axes[0], mouse_cca1, mouse_expr[g_mouse].values, MOUSE_COLOR, g_mouse, MOUSE_TITLE),
             (axes[1], human_cca1, human_expr[g_human].values, HUMAN_COLOR, g_human, HUMAN_TITLE),
         ]:
-            positions, groups = binned_groups(cca1, vals, N_CCA1_BINS)
+            positions, groups = binned_groups(coord, vals, N_CCA1_BINS)
             draw_boxbins(ax, positions, groups, color, sym, sp_title)
 
-        fig.suptitle(f'{g_mouse} / {g_human} — expression by {CCA1_LABEL} bin (boxplots)')
+        fig.suptitle(f'{g_mouse} / {g_human} — expression by {AXIS_LABEL} bin '
+                     f'(boxplots; r = {R_CCA1:.3f})')
         fig.tight_layout()
         pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
         plt.close(fig)
@@ -409,26 +318,18 @@ with PdfPages(OUT_PDF_BOX) as pdf:
 print(f'Saved {OUT_PDF_BOX}')
 
 # --- single-page PDF: gene x CCA1-bin heatmap per species, shared clustered row order ---
-print(f'Writing {OUT_PDF_HEAT} ({len(genes)} genes x {N_CCA1_BINS} {CCA1_LABEL} bins)...')
+print(f'Writing {OUT_PDF_HEAT} ({len(genes)} genes x {N_CCA1_BINS} {AXIS_LABEL} bins)...')
 mouse_mat = binmean_matrix(mouse_cca1, mouse_expr, genes, 'mouse')
 human_mat = binmean_matrix(human_cca1, human_expr, genes_human, 'human')
 
-
 # per-gene z-scoring WITHIN each species (each row centered on its own species-specific mean)
-def zscore_rows(mat, species):
-    """Z-score each row across its bins (mean 0, sd 1); fail fast on flat rows."""
-    sd  = mat.std(axis=1, keepdims=True)
-    bad = np.where(sd[:, 0] == 0)[0]
-    if bad.size:
-        raise ValueError(f'{species} genes with flat expression across all {CCA1_LABEL} bins '
-                         f'(cannot z-score or cluster): {[genes[i] for i in bad]}')
-    return (mat - mat.mean(axis=1, keepdims=True)) / sd
-
-
 mouse_scaled = zscore_rows(mouse_mat, 'mouse')
 human_scaled = zscore_rows(human_mat, 'human')
 joint_scaled = np.hstack([mouse_scaled, human_scaled])
-zlim = np.abs(joint_scaled).max()   # symmetric, shared color limits so 0 = each gene's mean
+n_clipped = int((np.abs(joint_scaled) > ZLIM).sum())
+if n_clipped:
+    print(f'  NOTE: {n_clipped} of {joint_scaled.size} cells exceed |z| = {ZLIM} and are '
+          f'clipped (max |z| = {np.abs(joint_scaled).max():.2f})')
 
 # one row order from the joint profile, applied to both panels so rows read across species
 row_order = leaves_list(linkage(joint_scaled, method=CLUSTER_METHOD, metric=CLUSTER_METRIC,
@@ -440,10 +341,10 @@ for ax, mat, gene_syms, sp_title, label_side in [
     (axes[0], mouse_scaled[row_order], [genes[i] for i in row_order], MOUSE_TITLE, 'left'),
     (axes[1], human_scaled[row_order], [genes_human[i] for i in row_order], HUMAN_TITLE, 'right'),
 ]:
-    im = ax.imshow(mat, aspect='auto', cmap=HEAT_CMAP, vmin=-zlim, vmax=zlim)
+    im = ax.imshow(mat, aspect='auto', cmap=HEAT_CMAP, vmin=-ZLIM, vmax=ZLIM)
     ax.set_xticks(range(N_CCA1_BINS))
     ax.set_xticklabels(range(1, N_CCA1_BINS + 1))
-    ax.set_xlabel(f'{CCA1_LABEL} bin (1..{N_CCA1_BINS}, low→high)')
+    ax.set_xlabel(f'{AXIS_LABEL} bin (1..{N_CCA1_BINS}, low→high)')
     ax.set_yticks(range(len(gene_syms)))
     ax.set_yticklabels(gene_syms, fontsize=8)
     ax.yaxis.set_label_position(label_side)
@@ -451,8 +352,8 @@ for ax, mat, gene_syms, sp_title, label_side in [
     ax.set_title(sp_title)
 
 fig.colorbar(im, ax=axes, label='z-scored mean expr\n(per gene, within each species)',
-             shrink=0.6, pad=0.1)
-fig.suptitle(f'{len(genes)} genes — mean expression over conserved {CCA1_LABEL} bins '
+             shrink=0.6, pad=0.1, extend='both')
+fig.suptitle(f'{len(genes)} genes — mean expression over conserved {AXIS_LABEL} bins '
              f'(r = {R_CCA1:.3f}; rows: hierarchical clustering)')
 fig.savefig(OUT_PDF_HEAT, bbox_inches='tight', dpi=DPI)
 plt.close(fig)
