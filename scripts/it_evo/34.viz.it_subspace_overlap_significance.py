@@ -4,24 +4,25 @@ Script 21 tests individual canonical axes (CCA1, CCA2, ...). This asks the axis-
 instead: is there ANY overall conservation between the mouse and human Gate-A loading subspaces
 of a subclass, without picking a direction? The statistic is the subspace overlap
 
-    Σcos²θ = Σ_i cos²θ_i = Σ_i r_i² = ‖Qxᵀ Qy‖²_F,
+    Σcos²θ = Σ_{i=1..4} cos²θ_i = Σ_{i=1..4} r_i²,
 
-the sum over ALL canonical components of the squared principal-angle cosines (equivalently the
-squared canonical correlations), where Qx, Qy are orthonormal bases of the two centered ortholog
-loading blocks. It is 0 when the subspaces are orthogonal and min(kx, ky) when one contains the
-other — a single scalar summarizing how aligned the two subspaces are, defining no axis.
+the sum over the top 4 canonical components of the squared principal-angle cosines (equivalently
+the squared canonical correlations), where Qx, Qy are orthonormal bases of the two centered
+ortholog loading blocks. Fixed at k=4 for every subclass (all have >= 4 components), so the totals
+are directly comparable. It is 0 when those directions are orthogonal and 4 when they coincide —
+a single scalar summarizing how aligned the two subspaces are, defining no axis.
 
 One panel per subclass, in a row (L2/3, L4, L5IT, L6IT). Each is a script-21-style permutation
 null: the grey histogram is Σcos²θ under N_PERM shuffles of the mouse gene labels (which destroys
-the ortholog pairing while leaving each species' subspace intact), the red line is the observed
-Σcos²θ, and the box quotes observed / z / empirical p / null mean·sd·percentiles / n. Observed
+the ortholog pairing while leaving each species' subspace intact), the coloured line is the
+observed Σcos²θ, and the box quotes observed / z / empirical p / null 99th pct / n. Observed
 sitting far in the right tail in every panel = significant overall conservation in every subclass.
 
 Permuting rows of Y commutes with orthonormalization (Qy_perm = P·Qy), so each replicate is one
-‖Qxᵀ(P·Qy)‖²_F — a matmul, no SVD. The observed value is checked against 16's persisted
-`subspace` spectrum row. Caveats mirror 21: the null is bounded and right-skewed, so z is a
-standardized effect size (not a Gaussian deviate) and the empirical p floors at 1/(N_PERM+1);
-the gene-exchangeability null ignores co-expression and is anti-conservative.
+k×k SVD of Qxᵀ(P·Qy) (the top-4 squared singular values). The observed value is checked against
+Σ of the top-4 squared canonical correlations in 16's persisted spectrum. Caveats mirror 21: the
+null is bounded and right-skewed, so z is a standardized effect size (not a Gaussian deviate) and
+the empirical p floors at 1/(N_PERM+1); the gene-exchangeability null ignores co-expression.
 
 Reads (per TOKEN):
   local_data/res/it_evo/02.human_<TOKEN>_varimax_loadings.tsv
@@ -36,7 +37,6 @@ Outputs:
 import os
 import numpy as np
 import pandas as pd
-import scipy.stats
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -71,10 +71,11 @@ SUBCLASSES = [
 ]
 
 # --- config ---
+TOP_K    = 4           # Σcos²θ over the top 4 canonical components (every subclass has >= 4)
 N_PERM   = 20000       # large so the null tail (hence empirical p) is well resolved (mirror 21)
 SEED     = 0
 N_BINS   = 60
-OBS_TOL  = 1e-6        # recomputed Σcos²θ vs 16's persisted subspace value
+OBS_TOL  = 1e-6        # recomputed Σcos²θ(top 4) vs Σ of 16's top-4 squared canonical r
 
 os.makedirs(FIG_DIR, exist_ok=True)
 
@@ -99,23 +100,28 @@ def analyze(cfg):
 
     Qx = orthonormal(H.loc[shared['human_symbol'].values, cfg['human_vx']].values)
     Qy = orthonormal(M.loc[shared['mouse_symbol'].values, cfg['mouse_vx']].values)
-    k = min(Qx.shape[1], Qy.shape[1])
-    obs = float(np.sum((Qx.T @ Qy) ** 2))            # Σcos²θ = ‖Qxᵀ Qy‖²_F over all components
 
-    # cross-check against 16's persisted subspace overlap (its default hvg_intersect spectrum)
+    def sumcos2_top(A):
+        sv = np.clip(np.linalg.svd(A, compute_uv=False), 0, 1)   # principal-angle cosines
+        return float(np.sum(sv[:TOP_K] ** 2))
+
+    obs = sumcos2_top(Qx.T @ Qy)                     # Σcos²θ over the top TOP_K components
+
+    # cross-check against Σ of 16's top-4 squared canonical correlations (default spectrum)
     spec = pd.read_csv(os.path.join(RES_DIR, f'16.{token}_axis_cca_spectrum.tsv'),
                        sep='\t').set_index('component')
-    sc2_16 = float(spec.loc['subspace', 'r'])
+    sc2_16 = float(sum(float(spec.loc[f'CCA{i}', 'r']) ** 2 for i in range(1, TOP_K + 1)))
     if not abs(obs - sc2_16) < OBS_TOL:
-        raise ValueError(f'{cfg["label"]}: recomputed Σcos²θ {obs:.6f} != 16 subspace {sc2_16:.6f}')
+        raise ValueError(f'{cfg["label"]}: recomputed Σcos²θ(top{TOP_K}) {obs:.6f} != '
+                         f'spectrum sum {sc2_16:.6f}')
 
     rng = np.random.default_rng(SEED)
     null = np.empty(N_PERM)
     for i in range(N_PERM):
-        null[i] = np.sum((Qx.T @ Qy[rng.permutation(n)]) ** 2)
-    print(f'  {cfg["label"]:5s}: n={n}, k={k}, Σcos²θ={obs:.3f}, '
+        null[i] = sumcos2_top(Qx.T @ Qy[rng.permutation(n)])
+    print(f'  {cfg["label"]:5s}: n={n}, Σcos²θ(top{TOP_K})={obs:.3f}, '
           f'null mean {null.mean():.3f}, z={(obs - null.mean()) / null.std():.1f}')
-    return {**cfg, 'n': n, 'k': k, 'obs': obs, 'null': null}
+    return {**cfg, 'n': n, 'obs': obs, 'null': null}
 
 
 print('--- subspace overlap Σcos²θ permutation significance, per IT subclass ---')
@@ -127,9 +133,9 @@ for res in results:
     null, obs = res['null'], res['obs']
     mu, sd = float(null.mean()), float(null.std())
     n_ge = int((null >= obs).sum())
-    rows.append({'subclass': res['label'], 'n': res['n'], 'k': res['k'], 'sumcos2': obs,
+    rows.append({'subclass': res['label'], 'n': res['n'], 'k': TOP_K, 'sumcos2': obs,
                  'null_mean': mu, 'null_sd': sd, 'z': (obs - mu) / sd,
-                 'null_p99': float(np.percentile(null, 99)), 'null_max': float(null.max()),
+                 'null_p99': float(np.percentile(null, 99)),
                  'n_ge': n_ge, 'p_emp': (1 + n_ge) / (N_PERM + 1)})
 pd.DataFrame(rows).to_csv(OUT_TSV, sep='\t', index=False)
 print(f'  Saved {OUT_TSV}')
@@ -139,32 +145,27 @@ plt.rcParams['pdf.fonttype'] = 42
 fig, axes = plt.subplots(1, len(results), figsize=(4.2 * len(results), 4.0), squeeze=False)
 for ax, res in zip(axes[0], results):
     null, obs = res['null'], res['obs']
-    mu, sd = null.mean(), null.std()
-    z = (obs - mu) / sd
+    z = (obs - null.mean()) / null.std()
     n_ge = int((null >= obs).sum())
-    p95, p99, null_max = np.percentile(null, 95), np.percentile(null, 99), null.max()
-    skew = scipy.stats.skew(null)
+    p99 = np.percentile(null, 99)
     p_str = (f'p < {1 / (N_PERM + 1):.1e}  (0 / {N_PERM})' if n_ge == 0
              else f'p = {(1 + n_ge) / (N_PERM + 1):.2e}')
 
     ax.hist(null, bins=N_BINS, density=True, color='#bdbdbd', edgecolor='none',
             label=f'permutation null (n={N_PERM})')
-    ax.axvline(mu, color='0.4', lw=1.0, ls=':', label=f'null mean = {mu:.3f}')
     ax.axvline(p99, color='0.4', lw=1.0, ls='--', label=f'null 99th pct = {p99:.3f}')
     ax.axvline(obs, color=res['color'], lw=2.4, label=f'observed = {obs:.3f}')
 
-    stats = (f'Σcos²θ = {obs:.3f}   (k = {res["k"]})\n'
-             f'z = {z:.1f}   (effect size, non-Gaussian)\n'
+    stats = (f'Σcos²θ (top {TOP_K}) = {obs:.3f}\n'
+             f'z = {z:.1f}\n'
              f'{p_str}\n'
-             f'null: mean {mu:.3f}, sd {sd:.3f}\n'
-             f'null 95th/99th/max = {p95:.3f} / {p99:.3f} / {null_max:.3f}\n'
-             f'null skew = +{skew:.2f}\n'
+             f'null 99th pct = {p99:.3f}\n'
              f'{res["n"]} shared orthologs')
     ax.text(0.96, 0.97, stats, transform=ax.transAxes, ha='right', va='top', fontsize=8,
             family='monospace',
             bbox=dict(boxstyle='round', facecolor='white', edgecolor='0.7', alpha=0.9))
     ax.set_xlim(0, max(obs, p99) * 1.15)
-    ax.set_xlabel('subspace overlap  Σcos²θ')
+    ax.set_xlabel(f'subspace overlap  Σcos²θ (top {TOP_K})')
     ax.set_ylabel('null density')
     ax.set_title(f'{res["label"]}: subspace-overlap permutation test')
     ax.legend(loc='center right', fontsize=7, framealpha=0.9)
