@@ -189,6 +189,7 @@ def _draw_cca1_bars(ax, bar_df, annot_fs, show_log2or, criteria_fs, label_fs=Non
         ax.set_xticklabels([])
     else:
         ax.set_xticklabels(bar_df['name'].values, rotation=90, fontsize=label_fs)
+        ax.tick_params(labelbottom=True)   # override sharex auto-hide on the top panel
     ax.set_ylabel(YLABEL)
 
     # annotate each bar tip with 'n genes with loading / n genes in regulon'
@@ -283,7 +284,7 @@ def draw_ac_with_overlap(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.5, 
                                        figsize=(max(6.0, width_factor * len(bar_df)), 8.6),
                                        gridspec_kw={'height_ratios': [3, 2]})
         ax0.set_title(TITLE)
-        _draw_cca1_bars(ax0, bar_df, annot_fs, show_log2or=True, criteria_fs=criteria_fs, label_fs=None)
+        _draw_cca1_bars(ax0, bar_df, annot_fs, show_log2or=True, criteria_fs=criteria_fs, label_fs=label_fs)
         _draw_overlap_mirror(ax1, bar_df, label_fs=label_fs)
         fig.tight_layout()
         pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
