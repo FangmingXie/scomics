@@ -39,7 +39,7 @@ Outputs:
   local_data/res/it/41b.l23_regulon_all_subclass_enrichment.tsv  (panel 2 long, all regulons)
   local_data/res/it/41b.selected_native_log2or.tsv   / _fdr.tsv   (panel 1 matrices)
   local_data/res/it/41b.selected_l23set_log2or.tsv   / _fdr.tsv   (panel 2 matrices)
-  local_data/fig/it/41b.selected_regulon_archetype_enrichment_masked.html
+  local_data/fig/it/41b.selected_regulon_archetype_enrichment.html
 """
 
 import os
@@ -73,7 +73,7 @@ OUT_NATIVE = {'log2_or': os.path.join(RES_DIR, '41b.selected_native_log2or.tsv')
               'fdr': os.path.join(RES_DIR, '41b.selected_native_fdr.tsv')}
 OUT_L23SET = {'log2_or': os.path.join(RES_DIR, '41b.selected_l23set_log2or.tsv'),
               'fdr': os.path.join(RES_DIR, '41b.selected_l23set_fdr.tsv')}
-OUT_HTML = os.path.join(FIG_DIR, '41b.selected_regulon_archetype_enrichment_masked.html')
+OUT_HTML = os.path.join(FIG_DIR, '41b.selected_regulon_archetype_enrichment.html')
 
 SELECTED_TFS = ['Fos', 'Fosb', 'Fosl2', 'Junb', 'Egr1', 'Egr2', 'Egr3', 'Egr4', 'Atf6', 'Smad3']
 # non-IEG regulons carried as controls; drawn below a horizontal rule

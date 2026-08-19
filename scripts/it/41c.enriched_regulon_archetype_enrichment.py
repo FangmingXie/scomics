@@ -23,7 +23,7 @@ Outputs:
   local_data/res/it/41c.enriched_regulon_selection.tsv        (chosen regulons + peak cell)
   local_data/res/it/41c.enriched_native_log2or.tsv / _fdr.tsv
   local_data/res/it/41c.enriched_l23set_log2or.tsv / _fdr.tsv
-  local_data/fig/it/41c.enriched_regulon_archetype_enrichment_masked.html
+  local_data/fig/it/41c.enriched_regulon_archetype_enrichment.html
 """
 
 import os
@@ -50,7 +50,7 @@ OUT_NATIVE = {'log2_or': os.path.join(RES_DIR, '41c.enriched_native_log2or.tsv')
               'fdr': os.path.join(RES_DIR, '41c.enriched_native_fdr.tsv')}
 OUT_L23SET = {'log2_or': os.path.join(RES_DIR, '41c.enriched_l23set_log2or.tsv'),
               'fdr': os.path.join(RES_DIR, '41c.enriched_l23set_fdr.tsv')}
-OUT_HTML = os.path.join(FIG_DIR, '41c.enriched_regulon_archetype_enrichment_masked.html')
+OUT_HTML = os.path.join(FIG_DIR, '41c.enriched_regulon_archetype_enrichment.html')
 
 os.makedirs(RES_DIR, exist_ok=True)
 os.makedirs(FIG_DIR, exist_ok=True)
