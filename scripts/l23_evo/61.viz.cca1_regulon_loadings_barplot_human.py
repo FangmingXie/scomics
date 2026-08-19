@@ -29,9 +29,12 @@ Reads:
   local_data/res/l23_evo/27.human_wang25_regulon_targets.tsv    (human regulons, +/+ targets)
   local_data/res/it/41.L2_3_regulon_archetype_enrichment.tsv    (mouse regulon-archetype enrichment)
 Outputs:
-  local_data/fig/l23_evo/61.cca1_regulon_loadings_barplot_human.pdf      (all regulons)
-  local_data/fig/l23_evo/61.cca1_regulon_loadings_barplot_human_AC.pdf   (A/C-colored only;
-      two panels — CCA1 bars on top, cross-species target-overlap mirror below)
+  Two representations, each as an all-regulon figure and an A/C-only 2-panel figure (CCA1 panel
+  on top, cross-species target-overlap mirror below):
+  local_data/fig/l23_evo/61.cca1_regulon_loadings_barplot_human.pdf       (bar: mean loading, all)
+  local_data/fig/l23_evo/61.cca1_regulon_loadings_barplot_human_AC.pdf    (bar: mean loading, A/C)
+  local_data/fig/l23_evo/61.cca1_regulon_loadings_boxplot_human.pdf       (box: distribution, all)
+  local_data/fig/l23_evo/61.cca1_regulon_loadings_boxplot_human_AC.pdf    (box: distribution, A/C)
 """
 
 import os
@@ -54,8 +57,12 @@ IN_CCA_WEIGHTS = os.path.join(OUT_RES_DIR, '24.orthoaxis_cca_weights_human.tsv')
 IN_HUMAN_REG   = os.path.join(OUT_RES_DIR, '27.human_wang25_regulon_targets.tsv')
 IN_MOUSE_REG   = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '40.yoo25_L2_3_regulon_targets.tsv')
 IN_MOUSE_ENRICH= os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '41.L2_3_regulon_archetype_enrichment.tsv')
+# Both representations are produced: 'bar' (per-regulon mean loading) and 'box' (per-gene loading
+# distribution). full = all regulons (single panel); AC = A/C only (2 panels + overlap).
 OUT_PDF_BAR    = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_barplot_human.pdf')
-OUT_PDF_AC     = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_barplot_human_AC.pdf')
+OUT_PDF_BOX    = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_boxplot_human.pdf')
+OUT_PDF_BAR_AC = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_barplot_human_AC.pdf')
+OUT_PDF_BOX_AC = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_boxplot_human_AC.pdf')
 
 # --- parameters ---
 # The regulon set is UNFILTERED: every activating (+/+) regulon in the Wang25 human table
@@ -84,18 +91,32 @@ MOUSE_COLOR    = '#2166ac'
 SHARED_COLOR   = '#4d4d4d'
 ARCH_ORDER     = ['A', 'B', 'C', 'other']
 DPI            = 300
-YLABEL         = 'target CCA1 loading (per gene)'
-TITLE          = 'Wang25 human regulons — target-gene loading distribution on human CCA1 (Jorstad23×Cheng22)'
-# Criteria / annotation legend shown on both figures (values interpolate the thresholds above).
-CRITERIA_LINES = [
-    'Regulons: all activating (+/+) Wang25 human regulons',
-    f'Plotted only if ≥{MIN_HVG_TARGETS} target genes are human HVGs (i.e. carry a CCA1 loading)',
-    'Box = distribution of CCA1 loadings across those HVG target genes (sorted by median)',
-    "Color = mouse archetype of the orthologous TF's mouse regulon, if it clears",
-    f'    overlap≥{MIN_OVERLAP} AND log2OR>{LOG2OR_THRESH:g} AND FDR<{FDR_THRESH:g} (mouse enrichment, script 41);',
-    "    otherwise 'other'.  overlap = mouse regulon targets ∩ mouse archetype markers",
-    'xx/xx (above box) = HVG target genes with a loading / total target genes in the regulon',
-]
+# Mode-dependent labels: 'bar' = per-regulon mean loading, 'box' = per-gene loading distribution.
+YLABEL         = {'bar': 'mean target CCA1 loading', 'box': 'target CCA1 loading (per gene)'}
+TITLE          = {
+    'bar': 'Wang25 human regulons — mean target-gene loading on human CCA1 (Jorstad23×Cheng22)',
+    'box': 'Wang25 human regulons — target-gene loading distribution on human CCA1 (Jorstad23×Cheng22)',
+}
+
+
+def criteria_lines(mode, show_log2or):
+    """Criteria/annotation legend text for the given representation (thresholds interpolated)."""
+    stat = ('Bar height = mean CCA1 loading across those HVG target genes (sorted by mean)'
+            if mode == 'bar' else
+            'Box = distribution of CCA1 loadings across those HVG target genes (sorted by median)')
+    tip = 'xx/xx (bar tip)' if mode == 'bar' else 'xx/xx (above box)'
+    lines = [
+        'Regulons: all activating (+/+) Wang25 human regulons',
+        f'Plotted only if ≥{MIN_HVG_TARGETS} target genes are human HVGs (i.e. carry a CCA1 loading)',
+        stat,
+        "Color = mouse archetype of the orthologous TF's mouse regulon, if it clears",
+        f'    overlap≥{MIN_OVERLAP} AND log2OR>{LOG2OR_THRESH:g} AND FDR<{FDR_THRESH:g} (mouse enrichment, script 41);',
+        "    otherwise 'other'.  overlap = mouse regulon targets ∩ mouse archetype markers",
+        f'{tip} = HVG target genes with a loading / total target genes in the regulon',
+    ]
+    if show_log2or:
+        lines.append('bold label at bar base = mouse log2 OR of the assigned archetype')
+    return lines
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
@@ -165,33 +186,47 @@ for r in REGULONS:
     loadings = cca1.loc[present].values
     print(f"  {r['name']}: {len(present)}/{len(tgs)} targets used, median CCA1 = {np.median(loadings):.4f}  (arch {arch}, log2OR {arch_or:.2f})")
     rows.append({'name': r['name'], 'loadings': loadings, 'median_loading': float(np.median(loadings)),
+                 'mean_loading': float(np.mean(loadings)),
                  'n_present': len(present), 'n_total': len(tgs), 'arch': arch, 'log2or': arch_or,
                  'human': r['human'], 'mouse': r['mouse']})
 
-bar = pd.DataFrame(rows).sort_values('median_loading', ascending=False).reset_index(drop=True)
+bar = pd.DataFrame(rows)
 
 # --- boxplots (one box per regulon, sorted by median, colored by mouse archetype) ---
 plt.rcParams['pdf.fonttype'] = 42   # editable vector text
 
 
-def _draw_cca1_bars(ax, bar_df, annot_fs, show_log2or, criteria_fs, label_fs=None):
-    """Draw per-regulon CCA1 loading-distribution boxplots (colored by archetype) onto ax.
+def _draw_cca1_panel(ax, bar_df, mode, annot_fs, show_log2or, criteria_fs, label_fs=None):
+    """Draw the per-regulon CCA1 loading panel (colored by archetype) onto ax.
 
-    label_fs=None hides the x tick labels (for a shared-x top panel). If show_log2or, mark each
-    box base with the mouse archetype log2 OR.
+    mode='bar' -> one bar per regulon at its MEAN loading; mode='box' -> a boxplot of the per-gene
+    loading distribution. label_fs=None hides x tick labels (shared-x top panel). If show_log2or,
+    mark each column base with the mouse archetype log2 OR.
     """
     x = np.arange(len(bar_df))
-    data = list(bar_df['loadings'].values)
-    bp = ax.boxplot(data, positions=x, widths=0.6, patch_artist=True, showfliers=False,
-                    medianprops=dict(color='black', linewidth=0.8))
-    for patch, a in zip(bp['boxes'], bar_df['arch'].values):
-        patch.set_facecolor(ARCH_COLORS[a])
-        patch.set_edgecolor('0.3')
-        patch.set_linewidth(0.4)
-        patch.set_alpha(0.9)
-    for part in ('whiskers', 'caps'):
-        for line in bp[part]:
-            line.set(color='0.4', linewidth=0.5)
+    sign = bar_df['mean_loading'].values if mode == 'bar' else bar_df['median_loading'].values
+
+    if mode == 'bar':
+        colors = [ARCH_COLORS[a] for a in bar_df['arch'].values]
+        ax.bar(x, bar_df['mean_loading'].values, color=colors, edgecolor='none', width=0.9)
+        pad = 0.02 * np.abs(bar_df['mean_loading'].values).max()
+        ytips = bar_df['mean_loading'].values          # n/N annotation sits at the bar tip
+    else:
+        data = list(bar_df['loadings'].values)
+        bp = ax.boxplot(data, positions=x, widths=0.6, patch_artist=True, showfliers=False,
+                        medianprops=dict(color='black', linewidth=0.8))
+        for patch, a in zip(bp['boxes'], bar_df['arch'].values):
+            patch.set_facecolor(ARCH_COLORS[a])
+            patch.set_edgecolor('0.3')
+            patch.set_linewidth(0.4)
+            patch.set_alpha(0.9)
+        for part in ('whiskers', 'caps'):
+            for line in bp[part]:
+                line.set(color='0.4', linewidth=0.5)
+        allvals = np.concatenate(data)
+        pad = 0.015 * (allvals.max() - allvals.min())
+        ytips = [bp['caps'][2 * xi + 1].get_ydata()[0] for xi in x]   # above each upper whisker
+
     ax.axhline(0, color='black', linewidth=0.8)
     ax.set_xlim(-0.6, len(bar_df) - 0.4)
     ax.set_xticks(x)
@@ -200,24 +235,21 @@ def _draw_cca1_bars(ax, bar_df, annot_fs, show_log2or, criteria_fs, label_fs=Non
     else:
         ax.set_xticklabels(bar_df['name'].values, rotation=90, fontsize=label_fs)
         ax.tick_params(labelbottom=True)   # override sharex auto-hide on the top panel
-    ax.set_ylabel(YLABEL)
+    ax.set_ylabel(YLABEL[mode])
 
-    allvals = np.concatenate(data)
-    pad = 0.015 * (allvals.max() - allvals.min())
+    # annotate each column with 'n genes with loading / n genes in regulon'
+    for xi, (yt, npres, ntot) in enumerate(zip(ytips, bar_df['n_present'].values, bar_df['n_total'].values)):
+        va = 'bottom' if (mode == 'box' or sign[xi] >= 0) else 'top'
+        ax.text(xi, yt + (pad if va == 'bottom' else -pad), f'{npres}/{ntot}',
+                ha='center', va=va, fontsize=annot_fs, color='black', rotation=90)
 
-    # annotate each box (above its upper whisker) with 'n genes with loading / n genes in regulon'
-    for xi, (npres, ntot) in enumerate(zip(bar_df['n_present'].values, bar_df['n_total'].values)):
-        ytop = bp['caps'][2 * xi + 1].get_ydata()[0]
-        ax.text(xi, ytop + pad, f'{npres}/{ntot}', ha='center', va='bottom',
-                fontsize=annot_fs, color='black', rotation=90)
-
-    # mark each box base with the mouse archetype log2 OR (A/C figure)
+    # mark each column base with the mouse archetype log2 OR (A/C figure)
     if show_log2or:
-        for xi, (med, lor) in enumerate(zip(bar_df['median_loading'].values, bar_df['log2or'].values)):
+        for xi, lor in enumerate(bar_df['log2or'].values):
             if not np.isfinite(lor):
                 continue
-            va = 'bottom' if med >= 0 else 'top'
-            ax.text(xi, (pad if med >= 0 else -pad), f'{lor:.1f}',
+            va = 'bottom' if sign[xi] >= 0 else 'top'
+            ax.text(xi, (pad if sign[xi] >= 0 else -pad), f'{lor:.1f}',
                     ha='center', va=va, fontsize=annot_fs + 1, color='black',
                     fontweight='bold', rotation=90)
 
@@ -227,11 +259,9 @@ def _draw_cca1_bars(ax, bar_df, annot_fs, show_log2or, criteria_fs, label_fs=Non
               loc='upper right', fontsize=8, title_fontsize=8)
 
     # criteria / annotation legend (upper-right, below the color legend; that quadrant is empty
-    # because bars are sorted so the right side holds the most-negative bars)
-    lines = list(CRITERIA_LINES)
-    if show_log2or:
-        lines.append('bold label at bar base = mouse log2 OR of the assigned archetype')
-    ax.text(0.995, 0.80, '\n'.join(lines), transform=ax.transAxes, ha='right', va='top',
+    # because columns are sorted so the right side holds the most-negative values)
+    ax.text(0.995, 0.80, '\n'.join(criteria_lines(mode, show_log2or)),
+            transform=ax.transAxes, ha='right', va='top',
             fontsize=criteria_fs, family='monospace', linespacing=1.5,
             bbox=dict(boxstyle='round', facecolor='white', edgecolor='0.7', alpha=0.9))
     sns.despine(ax=ax)
@@ -275,39 +305,31 @@ def _draw_overlap_mirror(ax, bar_df, label_fs):
     sns.despine(ax=ax)
 
 
-def draw_barplot(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.16, show_log2or=False,
-                 criteria_fs=6):
-    """Single-panel CCA1 loading-distribution boxplot -> out_pdf (used for the full figure)."""
+def draw_full(bar_df, out_pdf, mode, label_fs, annot_fs, width_factor=0.16, criteria_fs=6):
+    """Single-panel CCA1 figure (bar or box) over all regulons -> out_pdf."""
     with PdfPages(out_pdf) as pdf:
         fig, ax = plt.subplots(figsize=(max(6.0, width_factor * len(bar_df)), 5.6))
-        ax.set_title(TITLE)
-        _draw_cca1_bars(ax, bar_df, annot_fs, show_log2or, criteria_fs, label_fs=label_fs)
+        ax.set_title(TITLE[mode])
+        _draw_cca1_panel(ax, bar_df, mode, annot_fs, show_log2or=False, criteria_fs=criteria_fs,
+                         label_fs=label_fs)
         fig.tight_layout()
         pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
         plt.close(fig)
 
 
-def draw_ac_with_overlap(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.5, criteria_fs=6):
-    """Two stacked panels sharing x: CCA1 bars (top) + cross-species target overlap (bottom)."""
+def draw_ac_with_overlap(bar_df, out_pdf, mode, label_fs, annot_fs, width_factor=0.5, criteria_fs=6):
+    """Two stacked panels sharing x: CCA1 panel (bar/box) on top + target-overlap mirror below."""
     with PdfPages(out_pdf) as pdf:
         fig, (ax0, ax1) = plt.subplots(2, 1, sharex=True,
                                        figsize=(max(6.0, width_factor * len(bar_df)), 8.6),
                                        gridspec_kw={'height_ratios': [3, 2]})
-        ax0.set_title(TITLE)
-        _draw_cca1_bars(ax0, bar_df, annot_fs, show_log2or=True, criteria_fs=criteria_fs, label_fs=label_fs)
+        ax0.set_title(TITLE[mode])
+        _draw_cca1_panel(ax0, bar_df, mode, annot_fs, show_log2or=True, criteria_fs=criteria_fs,
+                         label_fs=label_fs)
         _draw_overlap_mirror(ax1, bar_df, label_fs=label_fs)
         fig.tight_layout()
         pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
         plt.close(fig)
-
-
-# full set (all 174 regulons); larger criteria font so the box is legible on the wide canvas
-print(f'Writing {OUT_PDF_BAR}...')
-draw_barplot(bar, OUT_PDF_BAR, label_fs=4, annot_fs=2.5, criteria_fs=11)
-print(f'Saved {OUT_PDF_BAR}')
-
-# A/C-only subset (drop B and 'other'); mark each bar with mouse archetype log2 OR
-bar_ac = bar[bar['arch'].isin(['A', 'C'])].reset_index(drop=True)
 
 
 def cross_species_overlap(human_key, mouse_key):
@@ -327,12 +349,21 @@ def cross_species_overlap(human_key, mouse_key):
     return len(H), len(M), overlap, jaccard
 
 
-ov = bar_ac.apply(lambda r: cross_species_overlap(r['human'], r['mouse']), axis=1, result_type='expand')
-bar_ac[['n_human', 'n_mouse', 'overlap', 'jaccard']] = ov
-for _, r in bar_ac.iterrows():
-    print(f"  {r['name']}: human={r['n_human']} mouse={r['n_mouse']} overlap={r['overlap']} jaccard={r['jaccard']:.4f}")
+# Both representations, each as full (all regulons) + A/C (2-panel with overlap). 'bar' sorts by
+# mean loading, 'box' by median.
+SORT_KEY = {'bar': 'mean_loading', 'box': 'median_loading'}
+for mode, out_full, out_ac in [('bar', OUT_PDF_BAR, OUT_PDF_BAR_AC),
+                               ('box', OUT_PDF_BOX, OUT_PDF_BOX_AC)]:
+    ordered = bar.sort_values(SORT_KEY[mode], ascending=False).reset_index(drop=True)
 
-print(f'Writing {OUT_PDF_AC} ({len(bar_ac)} A/C regulons)...')
-draw_ac_with_overlap(bar_ac, OUT_PDF_AC, label_fs=6, annot_fs=4, width_factor=0.5)
-print(f'Saved {OUT_PDF_AC}')
+    print(f'Writing {out_full}...')
+    draw_full(ordered, out_full, mode, label_fs=4, annot_fs=2.5, criteria_fs=11)
+    print(f'Saved {out_full}')
+
+    bar_ac = ordered[ordered['arch'].isin(['A', 'C'])].reset_index(drop=True)
+    ov = bar_ac.apply(lambda r: cross_species_overlap(r['human'], r['mouse']), axis=1, result_type='expand')
+    bar_ac[['n_human', 'n_mouse', 'overlap', 'jaccard']] = ov
+    print(f'Writing {out_ac} ({len(bar_ac)} A/C regulons)...')
+    draw_ac_with_overlap(bar_ac, out_ac, mode, label_fs=6, annot_fs=4)
+    print(f'Saved {out_ac}')
 print('Done.')
