@@ -15,9 +15,11 @@ fit on. No sign flip is applied (CCA axis sign is arbitrary; used as-is).
 
 Bars are colored by the regulon's MOUSE archetype: the human TF is mapped to its mouse orthologue
 (data/human_mouse_orthologs.tsv), and the mouse '<Sym>_+/+' regulon is assigned to the archetype
-(A'/B'/C') with the largest log2 odds ratio among rows clearing log2OR>2.0 AND FDR<0.05 in the
-mouse L2/3 regulon-archetype enrichment (script 41). Human regulons with no mouse orthologue, no
-mouse regulon, or no clearing archetype are 'other'. Displayed as A/B/C/other.
+(A'/B'/C') with the largest log2 odds ratio among rows clearing overlap>=5 AND log2OR>2.0 AND
+FDR<0.05 in the mouse L2/3 regulon-archetype enrichment (script 41; overlap = mouse regulon
+targets ∩ mouse archetype markers). The overlap floor guards against small-N OR inflation. Human
+regulons with no mouse orthologue, no mouse regulon, or no clearing archetype are 'other'.
+Displayed as A/B/C/other.
 
 Reads:
   local_data/res/l23_evo/05.varimax_loadings.tsv                (human gene x VX loadings)
@@ -61,9 +63,14 @@ REG_DIRECTION  = '_+/+'   # activating regulons only
 HUMAN_VX_COLS  = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']
 MOUSE_VX_COLS  = ['VX1', 'VX2', 'VX6', 'VX7', 'VX8', 'VX10']
 CCA_AXIS       = 'CCA1'
-# Mouse archetype enrichment significance (matches script 42/44 thresholds).
+# Mouse archetype enrichment significance (matches script 42/44 thresholds), plus a minimum
+# overlap so small-N regulons aren't assigned on an inflated OR / knife-edge FDR. 'overlap' is
+# the count of genes shared between the MOUSE regulon's targets and the MOUSE archetype's marker
+# set (script 41, both restricted to the mouse expression universe). log2OR/FDR alone don't fix
+# small-N inflation (e.g. NFIA: 4-gene overlap yet FDR 3e-4); the overlap count does.
 LOG2OR_THRESH  = 2.0
 FDR_THRESH     = 0.05
+MIN_OVERLAP    = 5
 # Only plot regulons with at least this many target genes among the human HVGs (i.e. carrying a
 # CCA1 loading), so each bar's mean rests on enough genes to be meaningful.
 MIN_HVG_TARGETS = 10
@@ -113,7 +120,8 @@ print(f'Unfiltered {REG_DIRECTION} human regulons: {len(REGULONS)}')
 
 # --- mouse archetype assignment per regulon (top significant archetype, or 'other') ---
 menr = pd.read_csv(IN_MOUSE_ENRICH, sep='\t')
-msig = menr[(menr['log2_or'] > LOG2OR_THRESH) & (menr['fdr'] < FDR_THRESH)]
+msig = menr[(menr['overlap'] >= MIN_OVERLAP) &
+            (menr['log2_or'] > LOG2OR_THRESH) & (menr['fdr'] < FDR_THRESH)]
 
 
 def assign_archetype(mouse_key):
