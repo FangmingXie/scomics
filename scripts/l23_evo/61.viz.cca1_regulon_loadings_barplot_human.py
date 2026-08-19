@@ -80,6 +80,16 @@ ARCH_ORDER     = ['A', 'B', 'C', 'other']
 DPI            = 300
 YLABEL         = 'mean target CCA1 loading'
 TITLE          = 'Wang25 human regulons — mean target-gene loading on human CCA1 (Jorstad23×Cheng22)'
+# Criteria / annotation legend shown on both figures (values interpolate the thresholds above).
+CRITERIA_LINES = [
+    'Regulons: all activating (+/+) Wang25 human regulons',
+    f'Plotted only if ≥{MIN_HVG_TARGETS} target genes are human HVGs (i.e. carry a CCA1 loading)',
+    'Bar height = mean CCA1 loading across those HVG target genes',
+    "Color = mouse archetype of the orthologous TF's mouse regulon, if it clears",
+    f'    overlap≥{MIN_OVERLAP} AND log2OR>{LOG2OR_THRESH:g} AND FDR<{FDR_THRESH:g} (mouse enrichment, script 41);',
+    "    otherwise 'other'.  overlap = mouse regulon targets ∩ mouse archetype markers",
+    'xx/xx (bar tip) = HVG target genes with a loading / total target genes in the regulon',
+]
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
 
@@ -192,9 +202,17 @@ def draw_barplot(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.16, show_lo
 
         handles = [Patch(facecolor=ARCH_COLORS[a], label=a) for a in ARCH_ORDER
                    if (a in bar_df['arch'].values)]
-        leg_title = 'mouse archetype' + ('\n(base label = log2 OR)' if show_log2or else '')
-        ax.legend(handles=handles, title=leg_title, frameon=False,
+        ax.legend(handles=handles, title='mouse archetype', frameon=False,
                   loc='upper right', fontsize=8, title_fontsize=8)
+
+        # criteria / annotation legend (upper-right, below the color legend; that quadrant is empty
+        # because bars are sorted so the right side holds the most-negative bars)
+        lines = list(CRITERIA_LINES)
+        if show_log2or:
+            lines.append('bold label at bar base = mouse log2 OR of the assigned archetype')
+        ax.text(0.995, 0.80, '\n'.join(lines), transform=ax.transAxes, ha='right', va='top',
+                fontsize=6, family='monospace', linespacing=1.5,
+                bbox=dict(boxstyle='round', facecolor='white', edgecolor='0.7', alpha=0.9))
 
         sns.despine(ax=ax)
         fig.tight_layout()
