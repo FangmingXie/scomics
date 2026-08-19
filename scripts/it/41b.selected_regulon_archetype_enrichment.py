@@ -14,8 +14,8 @@ Panel 2 asks whether a regulon defined in L2/3 still marks the same laminar-dept
 the other subclasses; its L2/3 columns reproduce panel 1's L2/3 columns by construction.
 Rows below the horizontal rule (CONTROL_TFS) are non-IEG regulons carried as controls.
 Only activating (+/+) regulons are shown. Cell color is the Haldane-Anscombe log2 odds
-ratio; '*' marks cells clearing all three of FDR < STAR_FDR, log2 OR > STAR_LOG2OR, and
-overlap >= STAR_MIN_OVERLAP genes.
+ratio; a black box marks cells clearing all three of FDR < STAR_FDR, log2 OR > STAR_LOG2OR,
+and overlap >= STAR_MIN_OVERLAP genes.
 
 Cells resting on fewer than MASK_MIN_OVERLAP shared genes are grayed rather than colored
 (see that constant for why), and every cell is labelled with its overlap gene count.
@@ -51,6 +51,7 @@ import anndata as ad
 import scipy.stats
 from statsmodels.stats.multitest import multipletests
 import plotly.graph_objects as go
+from plotly.colors import sample_colorscale
 from plotly.subplots import make_subplots
 
 import sys
@@ -83,13 +84,25 @@ SIGN = '+/+'        # activating regulons only
 STAR_FDR = 0.05         # BH-FDR below this
 STAR_LOG2OR = 2.0       # log2 odds ratio above this
 STAR_MIN_OVERLAP = 10   # at least this many genes shared by the regulon and the marker set
-COLOR_ABS = 5.0     # fixed log2 OR colorbar range [-COLOR_ABS, COLOR_ABS] (matches 41)
+# Once thin cells are masked, every remaining cell is enriched (min log2 OR = +0.21 across
+# both panels), so a diverging scale would waste half its range on unused blue. A
+# sequential ramp is used instead, over a fixed [COLOR_MIN, COLOR_MAX] so panels and
+# scripts stay comparable.
+COLOR_MIN, COLOR_MAX = 0.0, 6.5
 # In the masked figure, cells resting on fewer than this many shared genes are drawn gray
 # instead of colored: at a median expected overlap of ~1 gene the Haldane-Anscombe
 # correction gives sizeable positive log2 OR to cells with little or no actual overlap
 # (e.g. L4 Bach2 A': overlap=0, FDR=1.0, log2 OR=+2.28), which reads as enrichment.
 MASK_MIN_OVERLAP = 5
 MASK_COLOR = '#d9d9d9'
+# Significance is drawn as a box around the cell rather than an asterisk, and the overlap
+# count is printed in a single color -- so the ramp is YlOrRd stopped at 0.74, the point
+# past which black text drops below the 4.5:1 WCAG AA contrast ratio. Its pale-yellow floor
+# also stays distinguishable from MASK_COLOR.
+COLORSCALE = [[t, c] for t, c in zip(
+    np.linspace(0, 1, 21), sample_colorscale('YlOrRd', np.linspace(0, 0.74, 21)))]
+TEXT_COLOR = 'black'
+BOX_LINE = dict(color='black', width=2)
 
 # layer key (41's `layer`) -> depth-arc table token / display label, in laminar order
 LAYER_TOKEN = [('L2_3', 'L23', 'L2/3'), ('L4', 'L4', 'L4'),
@@ -225,12 +238,11 @@ def to_matrices(long, rows, cols):
             for key in ['log2_or', 'fdr', 'overlap', 'n_targets']}
 
 
-def cell_text(m, tested, sig):
-    """Per-cell label: the overlap gene count, suffixed '*' when the cell is significant."""
+def cell_text(m, tested):
+    """Per-cell label: the overlap gene count (significance is the box, not a suffix)."""
     ov, out = m['overlap'].values, []
     for i in range(ov.shape[0]):
-        out.append([f'{int(ov[i, j])}' + ('*' if sig[i, j] else '') if tested[i, j] else ''
-                    for j in range(ov.shape[1])])
+        out.append([f'{int(ov[i, j])}' if tested[i, j] else '' for j in range(ov.shape[1])])
     return out
 
 
@@ -257,13 +269,18 @@ def add_panel(fig, row, mats, rows, cols, primed, n_ieg):
 
     fig.add_trace(go.Heatmap(
         z=np.where(thin, np.nan, m['log2_or'].values), x=cols, y=rows, coloraxis='coloraxis',
-        text=cell_text(m, tested, sig), texttemplate='%{text}',
-        textfont=dict(size=11, color='black'),
+        text=cell_text(m, tested), texttemplate='%{text}',
+        textfont=dict(size=11, color=TEXT_COLOR),
         xgap=1, ygap=1, customdata=customdata,
         hovertemplate=hover + '<br>log2 OR=%{z:.2f}<extra></extra>',
     ), row=row, col=1)
     fig.update_yaxes(autorange='reversed', row=row, col=1)
-    fig.update_xaxes(tickangle=-45, row=row, col=1)
+    # every panel keeps its own tick labels despite shared_xaxes
+    fig.update_xaxes(tickangle=-45, showticklabels=True, row=row, col=1)
+
+    for i, j in zip(*np.nonzero(sig)):
+        fig.add_shape(type='rect', x0=j - 0.5, x1=j + 0.5, y0=i - 0.5, y1=i + 0.5,
+                      line=BOX_LINE, fillcolor='rgba(0,0,0,0)', row=row, col=1)
 
     start = 0
     for layer, _token, _label in LAYER_TOKEN[:-1]:
@@ -318,14 +335,16 @@ def main():
     for i, (title, mats, _outs) in enumerate(panels, start=1):
         add_panel(fig, i, mats, rows, cols, primed, n_ieg)
 
+    panel1 = fig.layout.yaxis.domain   # row 1 y-domain; colorbar is sized to match
     fig.update_layout(
         title=f'Selected regulons ({SIGN}) — archetype marker enrichment across mouse IT '
               f'subclasses (log2 OR)<br>'
-              f'<sub>cell label = overlap gene count; * FDR<{STAR_FDR:g} AND '
+              f'<sub>cell label = overlap gene count; boxed = FDR<{STAR_FDR:g} AND '
               f'log2 OR>{STAR_LOG2OR:g} AND overlap>={STAR_MIN_OVERLAP}; '
               f'gray = overlap<{MASK_MIN_OVERLAP}, too few shared genes to trust</sub>',
-        coloraxis=dict(colorscale='RdBu_r', cmid=0, cmin=-COLOR_ABS, cmax=COLOR_ABS,
-                       colorbar=dict(title='log2 OR', len=0.9, thickness=14)),
+        coloraxis=dict(colorscale=COLORSCALE, cmin=COLOR_MIN, cmax=COLOR_MAX,
+                       colorbar=dict(title='log2 OR', thickness=14, x=1.01, xanchor='left',
+                                     len=panel1[1] - panel1[0], y=panel1[1], yanchor='top')),
         height=160 + len(panels) * (26 * len(rows) + 70),
         width=max(760, 62 * len(cols) + 340),
         plot_bgcolor='white', margin=dict(t=110), showlegend=False,

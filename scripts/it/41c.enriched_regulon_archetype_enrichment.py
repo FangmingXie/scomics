@@ -4,7 +4,7 @@
 columns, same two panels, same statistics, same masking) but selects its rows by data:
 every regulon that is *significantly enriched in at least one archetype of at least one
 subclass*, using 41b's star criterion (FDR < STAR_FDR AND log2 OR > STAR_LOG2OR AND
-overlap >= STAR_MIN_OVERLAP genes).
+overlap >= STAR_MIN_OVERLAP genes; drawn as a box around the cell).
 
 Rows are grouped by the column where the regulon peaks, so the figure reads as blocks of
 regulons marking the same laminar pole; within a block they are sorted by descending peak
@@ -144,15 +144,17 @@ def main():
         # n_ieg = len(rows) suppresses 41b's IEG/control rule; there are no blocks here
         m41b.add_panel(fig, i, mats, rows, cols, primed, len(rows))
 
+    panel1 = fig.layout.yaxis.domain   # row 1 y-domain; colorbar is sized to match
     fig.update_layout(
         title=f'All enriched regulons ({m41b.SIGN}) — archetype marker enrichment across mouse '
               f'IT subclasses (log2 OR)<br>'
               f'<sub>rows = regulons starred in >=1 cell, grouped by peak column; '
-              f'cell label = overlap gene count; * FDR<{m41b.STAR_FDR:g} AND '
+              f'cell label = overlap gene count; boxed = FDR<{m41b.STAR_FDR:g} AND '
               f'log2 OR>{m41b.STAR_LOG2OR:g} AND overlap>={m41b.STAR_MIN_OVERLAP}; '
               f'gray = overlap<{m41b.MASK_MIN_OVERLAP}, too few shared genes to trust</sub>',
-        coloraxis=dict(colorscale='RdBu_r', cmid=0, cmin=-m41b.COLOR_ABS, cmax=m41b.COLOR_ABS,
-                       colorbar=dict(title='log2 OR', len=0.9, thickness=14)),
+        coloraxis=dict(colorscale=m41b.COLORSCALE, cmin=m41b.COLOR_MIN, cmax=m41b.COLOR_MAX,
+                       colorbar=dict(title='log2 OR', thickness=14, x=1.01, xanchor='left',
+                                     len=panel1[1] - panel1[0], y=panel1[1], yanchor='top')),
         height=160 + len(panels) * (22 * len(rows) + 70),
         width=max(760, 62 * len(cols) + 340),
         plot_bgcolor='white', margin=dict(t=120), showlegend=False,
