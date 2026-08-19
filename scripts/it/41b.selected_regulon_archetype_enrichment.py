@@ -79,21 +79,27 @@ SELECTED_TFS = ['Fos', 'Fosb', 'Fosl2', 'Junb', 'Egr1', 'Egr2', 'Egr3', 'Egr4', 
 # non-IEG regulons carried as controls; drawn below a horizontal rule
 CONTROL_TFS = ['Rfx3', 'Nfib', 'Tcf4', 'Jdp2', 'Satb1', 'Tcf12', 'Bach2']
 SIGN = '+/+'        # activating regulons only
-# a cell is starred only if it clears all three criteria (significant, strong, and not
-# carried by a handful of genes)
-STAR_FDR = 0.05         # BH-FDR below this
-STAR_LOG2OR = 2.0       # log2 odds ratio above this
-STAR_MIN_OVERLAP = 10   # at least this many genes shared by the regulon and the marker set
-# Once thin cells are masked, every remaining cell is enriched (min log2 OR = +0.21 across
-# both panels), so a diverging scale would waste half its range on unused blue. A
-# sequential ramp is used instead, over a fixed [COLOR_MIN, COLOR_MAX] so panels and
-# scripts stay comparable.
-COLOR_MIN, COLOR_MAX = 0.0, 6.5
 # In the masked figure, cells resting on fewer than this many shared genes are drawn gray
 # instead of colored: at a median expected overlap of ~1 gene the Haldane-Anscombe
 # correction gives sizeable positive log2 OR to cells with little or no actual overlap
 # (e.g. L4 Bach2 A': overlap=0, FDR=1.0, log2 OR=+2.28), which reads as enrichment.
 MASK_MIN_OVERLAP = 5
+
+# a cell is starred only if it clears all three criteria (significant, strong, and not
+# carried by a handful of genes)
+STAR_FDR = 0.05         # BH-FDR below this
+STAR_LOG2OR = 2.0       # log2 odds ratio above this
+# Kept equal to MASK_MIN_OVERLAP: the two encode one decision (how many shared genes are
+# enough to trust a cell), and Fisher already penalizes thin overlap on its own. At 10 this
+# floor acted as a regulon-size filter -- 0% of regulons with <=25 targets could ever pass
+# it against 93% of those with >120 -- discarding 26 regulons that cleared both other
+# criteria, Meis2 among them (9/23 targets are L2/3 A' markers, FDR 6e-11).
+STAR_MIN_OVERLAP = MASK_MIN_OVERLAP
+# Once thin cells are masked, every remaining cell is enriched (min log2 OR = +0.21 across
+# both panels), so a diverging scale would waste half its range on unused blue. A
+# sequential ramp is used instead, over a fixed [COLOR_MIN, COLOR_MAX] so panels and
+# scripts stay comparable.
+COLOR_MIN, COLOR_MAX = 0.0, 6.5
 MASK_COLOR = '#d9d9d9'
 # Significance is drawn as a box around the cell rather than an asterisk, and the overlap
 # count is printed in a single color -- so the ramp is YlOrRd stopped at 0.74, the point
