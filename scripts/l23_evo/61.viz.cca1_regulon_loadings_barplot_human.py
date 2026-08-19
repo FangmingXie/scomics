@@ -84,17 +84,17 @@ MOUSE_COLOR    = '#2166ac'
 SHARED_COLOR   = '#4d4d4d'
 ARCH_ORDER     = ['A', 'B', 'C', 'other']
 DPI            = 300
-YLABEL         = 'mean target CCA1 loading'
-TITLE          = 'Wang25 human regulons — mean target-gene loading on human CCA1 (Jorstad23×Cheng22)'
+YLABEL         = 'target CCA1 loading (per gene)'
+TITLE          = 'Wang25 human regulons — target-gene loading distribution on human CCA1 (Jorstad23×Cheng22)'
 # Criteria / annotation legend shown on both figures (values interpolate the thresholds above).
 CRITERIA_LINES = [
     'Regulons: all activating (+/+) Wang25 human regulons',
     f'Plotted only if ≥{MIN_HVG_TARGETS} target genes are human HVGs (i.e. carry a CCA1 loading)',
-    'Bar height = mean CCA1 loading across those HVG target genes',
+    'Box = distribution of CCA1 loadings across those HVG target genes (sorted by median)',
     "Color = mouse archetype of the orthologous TF's mouse regulon, if it clears",
     f'    overlap≥{MIN_OVERLAP} AND log2OR>{LOG2OR_THRESH:g} AND FDR<{FDR_THRESH:g} (mouse enrichment, script 41);',
     "    otherwise 'other'.  overlap = mouse regulon targets ∩ mouse archetype markers",
-    'xx/xx (bar tip) = HVG target genes with a loading / total target genes in the regulon',
+    'xx/xx (above box) = HVG target genes with a loading / total target genes in the regulon',
 ]
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
@@ -153,7 +153,7 @@ def assign_archetype(mouse_key):
     return top['arch_letter'].rstrip("'"), float(top['log2_or'])   # A' -> A, B' -> B, C' -> C
 
 
-# --- per-regulon mean CCA1 loading over present targets + archetype color ---
+# --- per-regulon CCA1 loading distribution over present targets + archetype color ---
 rows = []
 for r in REGULONS:
     tgs = targets(hreg, r['human'])
@@ -162,29 +162,39 @@ for r in REGULONS:
     if len(present) < MIN_HVG_TARGETS:
         print(f"  {r['name']}: {len(present)}/{len(tgs)} HVG targets < {MIN_HVG_TARGETS} — skipped  (arch {arch})")
         continue
-    mean_loading = cca1.loc[present].mean()
-    print(f"  {r['name']}: {len(present)}/{len(tgs)} targets used, mean CCA1 = {mean_loading:.4f}  (arch {arch}, log2OR {arch_or:.2f})")
-    rows.append({'name': r['name'], 'mean_loading': mean_loading,
+    loadings = cca1.loc[present].values
+    print(f"  {r['name']}: {len(present)}/{len(tgs)} targets used, median CCA1 = {np.median(loadings):.4f}  (arch {arch}, log2OR {arch_or:.2f})")
+    rows.append({'name': r['name'], 'loadings': loadings, 'median_loading': float(np.median(loadings)),
                  'n_present': len(present), 'n_total': len(tgs), 'arch': arch, 'log2or': arch_or,
                  'human': r['human'], 'mouse': r['mouse']})
 
-bar = pd.DataFrame(rows).sort_values('mean_loading', ascending=False).reset_index(drop=True)
+bar = pd.DataFrame(rows).sort_values('median_loading', ascending=False).reset_index(drop=True)
 
-# --- barplot (one bar per regulon, sorted descending, colored by mouse archetype) ---
+# --- boxplots (one box per regulon, sorted by median, colored by mouse archetype) ---
 plt.rcParams['pdf.fonttype'] = 42   # editable vector text
 
 
 def _draw_cca1_bars(ax, bar_df, annot_fs, show_log2or, criteria_fs, label_fs=None):
-    """Draw the CCA1 mean-loading bars (colored by archetype) onto ax.
+    """Draw per-regulon CCA1 loading-distribution boxplots (colored by archetype) onto ax.
 
     label_fs=None hides the x tick labels (for a shared-x top panel). If show_log2or, mark each
-    bar base with the mouse archetype log2 OR.
+    box base with the mouse archetype log2 OR.
     """
-    x = range(len(bar_df))
-    colors = [ARCH_COLORS[a] for a in bar_df['arch'].values]
-    ax.bar(x, bar_df['mean_loading'].values, color=colors, edgecolor='none', width=0.9)
+    x = np.arange(len(bar_df))
+    data = list(bar_df['loadings'].values)
+    bp = ax.boxplot(data, positions=x, widths=0.6, patch_artist=True, showfliers=False,
+                    medianprops=dict(color='black', linewidth=0.8))
+    for patch, a in zip(bp['boxes'], bar_df['arch'].values):
+        patch.set_facecolor(ARCH_COLORS[a])
+        patch.set_edgecolor('0.3')
+        patch.set_linewidth(0.4)
+        patch.set_alpha(0.9)
+    for part in ('whiskers', 'caps'):
+        for line in bp[part]:
+            line.set(color='0.4', linewidth=0.5)
     ax.axhline(0, color='black', linewidth=0.8)
-    ax.set_xticks(list(x))
+    ax.set_xlim(-0.6, len(bar_df) - 0.4)
+    ax.set_xticks(x)
     if label_fs is None:
         ax.set_xticklabels([])
     else:
@@ -192,22 +202,22 @@ def _draw_cca1_bars(ax, bar_df, annot_fs, show_log2or, criteria_fs, label_fs=Non
         ax.tick_params(labelbottom=True)   # override sharex auto-hide on the top panel
     ax.set_ylabel(YLABEL)
 
-    # annotate each bar tip with 'n genes with loading / n genes in regulon'
-    ymax = bar_df['mean_loading'].abs().max()
-    pad = 0.02 * ymax
-    for xi, (val, npres, ntot) in enumerate(zip(bar_df['mean_loading'].values,
-                                                bar_df['n_present'].values, bar_df['n_total'].values)):
-        va = 'bottom' if val >= 0 else 'top'
-        ax.text(xi, val + (pad if val >= 0 else -pad), f'{npres}/{ntot}',
-                ha='center', va=va, fontsize=annot_fs, color='black', rotation=90)
+    allvals = np.concatenate(data)
+    pad = 0.015 * (allvals.max() - allvals.min())
 
-    # mark each bar base with the mouse archetype log2 OR (A/C figure)
+    # annotate each box (above its upper whisker) with 'n genes with loading / n genes in regulon'
+    for xi, (npres, ntot) in enumerate(zip(bar_df['n_present'].values, bar_df['n_total'].values)):
+        ytop = bp['caps'][2 * xi + 1].get_ydata()[0]
+        ax.text(xi, ytop + pad, f'{npres}/{ntot}', ha='center', va='bottom',
+                fontsize=annot_fs, color='black', rotation=90)
+
+    # mark each box base with the mouse archetype log2 OR (A/C figure)
     if show_log2or:
-        for xi, (val, lor) in enumerate(zip(bar_df['mean_loading'].values, bar_df['log2or'].values)):
+        for xi, (med, lor) in enumerate(zip(bar_df['median_loading'].values, bar_df['log2or'].values)):
             if not np.isfinite(lor):
                 continue
-            va = 'bottom' if val >= 0 else 'top'
-            ax.text(xi, (pad if val >= 0 else -pad), f'{lor:.1f}',
+            va = 'bottom' if med >= 0 else 'top'
+            ax.text(xi, (pad if med >= 0 else -pad), f'{lor:.1f}',
                     ha='center', va=va, fontsize=annot_fs + 1, color='black',
                     fontweight='bold', rotation=90)
 
@@ -267,7 +277,7 @@ def _draw_overlap_mirror(ax, bar_df, label_fs):
 
 def draw_barplot(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.16, show_log2or=False,
                  criteria_fs=6):
-    """Single-panel CCA1 barplot -> out_pdf (used for the full figure)."""
+    """Single-panel CCA1 loading-distribution boxplot -> out_pdf (used for the full figure)."""
     with PdfPages(out_pdf) as pdf:
         fig, ax = plt.subplots(figsize=(max(6.0, width_factor * len(bar_df)), 5.6))
         ax.set_title(TITLE)
