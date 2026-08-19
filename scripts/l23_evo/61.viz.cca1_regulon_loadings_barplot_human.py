@@ -236,6 +236,7 @@ def _draw_overlap_mirror(ax, bar_df, label_fs):
     nh = bar_df['n_human'].values
     nm = bar_df['n_mouse'].values
     ov = bar_df['overlap'].values
+    jac = bar_df['jaccard'].values
     ax.bar(x, ov, color=SHARED_COLOR, width=0.8)                     # shared core (up half)
     ax.bar(x, nh - ov, bottom=ov, color=HUMAN_COLOR, width=0.8)      # human-specific
     ax.bar(x, -ov, color=SHARED_COLOR, width=0.8)                    # shared core (down half)
@@ -243,13 +244,13 @@ def _draw_overlap_mirror(ax, bar_df, label_fs):
     ax.axhline(0, color='black', linewidth=0.8)
 
     for xi in x:
-        ax.text(xi, nh[xi], f' {nh[xi]}', ha='center', va='bottom', fontsize=label_fs - 1,
+        ax.text(xi, nh[xi], f' {int(nh[xi])}', ha='center', va='bottom', fontsize=label_fs - 1,
                 color=HUMAN_COLOR, rotation=90)
-        ax.text(xi, -nm[xi], f'{nm[xi]} ', ha='center', va='top', fontsize=label_fs - 1,
+        ax.text(xi, -nm[xi], f'{int(nm[xi])} ', ha='center', va='top', fontsize=label_fs - 1,
                 color=MOUSE_COLOR, rotation=90)
-        # overlap count centered on the zero line with a white background so it's always readable
-        ax.text(xi, 0, str(ov[xi]), ha='center', va='center', fontsize=label_fs, color='black',
-                fontweight='bold',
+        # overlap count + Jaccard index, centered on the zero line with a white background box
+        ax.text(xi, 0, f'{int(ov[xi])}\nJ={jac[xi]:.1%}', ha='center', va='center',
+                fontsize=label_fs - 1.5, color='black', fontweight='bold', linespacing=1.2,
                 bbox=dict(boxstyle='round,pad=0.15', facecolor='white', edgecolor=SHARED_COLOR, linewidth=0.5))
 
     ax.set_xticks(x)
@@ -258,7 +259,8 @@ def _draw_overlap_mirror(ax, bar_df, label_fs):
     handles = [Patch(facecolor=HUMAN_COLOR, label='human-specific'),
                Patch(facecolor=SHARED_COLOR, label='shared ortholog (overlap)'),
                Patch(facecolor=MOUSE_COLOR, label='mouse-specific')]
-    ax.legend(handles=handles, frameon=False, loc='upper right', fontsize=7)
+    ax.legend(handles=handles, title='box = overlap count & J (Jaccard, ortholog space)',
+              frameon=False, loc='upper right', fontsize=7, title_fontsize=7)
     sns.despine(ax=ax)
 
 
@@ -298,17 +300,26 @@ bar_ac = bar[bar['arch'].isin(['A', 'C'])].reset_index(drop=True)
 
 
 def cross_species_overlap(human_key, mouse_key):
-    """(n_human, n_mouse, overlap) target counts; overlap = ortholog pairs targeted in both species."""
+    """(n_human, n_mouse, overlap, jaccard) for a regulon's mouse vs human targets.
+
+    overlap = ortholog pairs targeted in both species. jaccard is over the ortholog-comparable
+    sets: |H_o ∩ M_h| / |H_o ∪ M_h|, where H_o = human targets with a 1:1 ortholog and M_h = mouse
+    targets mapped to their human ortholog (so genes lacking an ortholog can't count as shared).
+    """
     H = set(hreg.loc[hreg['regulon'] == human_key, 'Gene'])
     M = set(mreg.loc[mreg['regulon'] == mouse_key, 'Gene']) if mouse_key is not None else set()
-    overlap = sum(1 for g in H if g in h2m and h2m[g] in M)
-    return len(H), len(M), overlap
+    Ho = {g for g in H if g in h2m}
+    Mh = {m2h[g] for g in M if g in m2h}
+    overlap = len(Ho & Mh)
+    union = len(Ho | Mh)
+    jaccard = overlap / union if union else 0.0
+    return len(H), len(M), overlap, jaccard
 
 
 ov = bar_ac.apply(lambda r: cross_species_overlap(r['human'], r['mouse']), axis=1, result_type='expand')
-bar_ac[['n_human', 'n_mouse', 'overlap']] = ov
+bar_ac[['n_human', 'n_mouse', 'overlap', 'jaccard']] = ov
 for _, r in bar_ac.iterrows():
-    print(f"  {r['name']}: human={r['n_human']} mouse={r['n_mouse']} overlap={r['overlap']}")
+    print(f"  {r['name']}: human={r['n_human']} mouse={r['n_mouse']} overlap={r['overlap']} jaccard={r['jaccard']:.4f}")
 
 print(f'Writing {OUT_PDF_AC} ({len(bar_ac)} A/C regulons)...')
 draw_ac_with_overlap(bar_ac, OUT_PDF_AC, label_fs=6, annot_fs=4, width_factor=0.5)
