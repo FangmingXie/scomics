@@ -12,6 +12,7 @@ read across L2/3, L4, L5IT and L6IT:
 
 Panel 2 asks whether a regulon defined in L2/3 still marks the same laminar-depth pole in
 the other subclasses; its L2/3 columns reproduce panel 1's L2/3 columns by construction.
+Rows below the horizontal rule (CONTROL_TFS) are non-IEG regulons carried as controls.
 Only activating (+/+) regulons are shown. Cell color is the Haldane-Anscombe log2 odds
 ratio; '*' marks cells clearing all three of FDR < STAR_FDR, log2 OR > STAR_LOG2OR, and
 overlap >= STAR_MIN_OVERLAP genes.
@@ -71,6 +72,8 @@ OUT_L23SET = {'log2_or': os.path.join(RES_DIR, '41b.selected_l23set_log2or.tsv')
 OUT_HTML = os.path.join(FIG_DIR, '41b.selected_regulon_archetype_enrichment.html')
 
 SELECTED_TFS = ['Fos', 'Fosb', 'Fosl2', 'Junb', 'Egr1', 'Egr2', 'Egr3', 'Egr4', 'Atf6', 'Smad3']
+# non-IEG regulons carried as controls; drawn below a horizontal rule
+CONTROL_TFS = ['Rfx3', 'Nfib', 'Tcf4', 'Jdp2', 'Satb1', 'Tcf12', 'Bach2']
 SIGN = '+/+'        # activating regulons only
 # a cell is starred only if it clears all three criteria (significant, strong, and not
 # carried by a handful of genes)
@@ -213,7 +216,7 @@ def to_matrices(long, rows, cols):
             for key in ['log2_or', 'fdr', 'overlap', 'n_targets']}
 
 
-def add_panel(fig, row, mats, rows, cols, primed):
+def add_panel(fig, row, mats, rows, cols, primed, n_ieg):
     m = mats
     sig = ((m['fdr'].values < STAR_FDR)
            & (m['log2_or'].values > STAR_LOG2OR)
@@ -235,6 +238,10 @@ def add_panel(fig, row, mats, rows, cols, primed):
         start += len(primed[layer])
         fig.add_vline(x=start - 0.5, line=dict(color='black', width=1.5), row=row, col=1)
 
+    # rule between the IEG block and the control block
+    if 0 < n_ieg < len(rows):
+        fig.add_hline(y=n_ieg - 0.5, line=dict(color='black', width=2.5), row=row, col=1)
+
 
 def main():
     m41 = load_41()
@@ -244,11 +251,14 @@ def main():
     native = load_native(primed)
     l23set = build_l23_set(primed, m41)
 
-    rows = [t for t in SELECTED_TFS
-            if t in set(native.loc[native['regulation_direction'] == SIGN, 'TF'])
-            or t in set(l23set.loc[l23set['regulation_direction'] == SIGN, 'TF'])]
-    missing = [t for t in SELECTED_TFS if t not in rows]
-    assert rows, f'none of {SELECTED_TFS} has an activating regulon'
+    have = (set(native.loc[native['regulation_direction'] == SIGN, 'TF'])
+            | set(l23set.loc[l23set['regulation_direction'] == SIGN, 'TF']))
+    ieg_rows = [t for t in SELECTED_TFS if t in have]
+    ctrl_rows = [t for t in CONTROL_TFS if t in have]
+    rows = ieg_rows + ctrl_rows
+    n_ieg = len(ieg_rows)   # horizontal rule goes below this many rows
+    missing = [t for t in SELECTED_TFS + CONTROL_TFS if t not in have]
+    assert rows, f'none of {SELECTED_TFS + CONTROL_TFS} has an activating regulon'
     if missing:
         print(f'  [note] TFs with no {SIGN} regulon anywhere: {missing}')
 
@@ -256,7 +266,8 @@ def main():
         ("each subclass's own regulons", to_matrices(native, rows, cols), OUT_NATIVE),
         ('L2/3 regulons applied to every subclass', to_matrices(l23set, rows, cols), OUT_L23SET),
     ]
-    print(f'\n  {len(rows)} TFs x {len(cols)} subclass-archetype columns')
+    print(f'\n  {len(rows)} TFs ({n_ieg} IEG + {len(ctrl_rows)} control) '
+          f'x {len(cols)} subclass-archetype columns')
 
     fig = make_subplots(rows=len(panels), cols=1, shared_xaxes=True, vertical_spacing=0.10,
                         subplot_titles=[t for t, _m, _o in panels])
@@ -266,7 +277,7 @@ def main():
         for key, path in outs.items():
             mats[key].to_csv(path, sep='\t')
             print(f'    wrote -> {path}')
-        add_panel(fig, i, mats, rows, cols, primed)
+        add_panel(fig, i, mats, rows, cols, primed, n_ieg)
 
     fig.update_layout(
         title=f'Selected regulons ({SIGN}) — archetype marker enrichment across mouse IT '
