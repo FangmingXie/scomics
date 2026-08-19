@@ -88,7 +88,7 @@ MASK_MIN_OVERLAP = 5
 # a cell is starred only if it clears all three criteria (significant, strong, and not
 # carried by a handful of genes)
 STAR_FDR = 0.05         # BH-FDR below this
-STAR_LOG2OR = 2.0       # log2 odds ratio above this
+STAR_LOG2OR = 3.0       # log2 odds ratio above this
 # Kept equal to MASK_MIN_OVERLAP: the two encode one decision (how many shared genes are
 # enough to trust a cell), and Fisher already penalizes thin overlap on its own. At 10 this
 # floor acted as a regulon-size filter -- 0% of regulons with <=25 targets could ever pass
