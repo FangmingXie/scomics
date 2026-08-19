@@ -117,13 +117,14 @@ msig = menr[(menr['log2_or'] > LOG2OR_THRESH) & (menr['fdr'] < FDR_THRESH)]
 
 
 def assign_archetype(mouse_key):
+    """Return (display letter, mouse log2 OR) for the top clearing archetype, else ('other', nan)."""
     if mouse_key is None:
-        return 'other'
+        return 'other', float('nan')
     rows = msig[msig['regulon'] == mouse_key]
     if rows.empty:
-        return 'other'
-    top = rows.sort_values('log2_or', ascending=False).iloc[0]['arch_letter']
-    return top.rstrip("'")   # A' -> A, B' -> B, C' -> C
+        return 'other', float('nan')
+    top = rows.sort_values('log2_or', ascending=False).iloc[0]
+    return top['arch_letter'].rstrip("'"), float(top['log2_or'])   # A' -> A, B' -> B, C' -> C
 
 
 # --- per-regulon mean CCA1 loading over present targets + archetype color ---
@@ -131,14 +132,14 @@ rows = []
 for r in REGULONS:
     tgs = targets(hreg, r['human'])
     present = [g for g in tgs if g in cca1.index]
-    arch = assign_archetype(r['mouse'])
+    arch, arch_or = assign_archetype(r['mouse'])
     if len(present) < MIN_HVG_TARGETS:
         print(f"  {r['name']}: {len(present)}/{len(tgs)} HVG targets < {MIN_HVG_TARGETS} — skipped  (arch {arch})")
         continue
     mean_loading = cca1.loc[present].mean()
-    print(f"  {r['name']}: {len(present)}/{len(tgs)} targets used, mean CCA1 = {mean_loading:.4f}  (arch {arch})")
+    print(f"  {r['name']}: {len(present)}/{len(tgs)} targets used, mean CCA1 = {mean_loading:.4f}  (arch {arch}, log2OR {arch_or:.2f})")
     rows.append({'name': r['name'], 'mean_loading': mean_loading,
-                 'n_present': len(present), 'n_total': len(tgs), 'arch': arch})
+                 'n_present': len(present), 'n_total': len(tgs), 'arch': arch, 'log2or': arch_or})
 
 bar = pd.DataFrame(rows).sort_values('mean_loading', ascending=False).reset_index(drop=True)
 
@@ -146,10 +147,13 @@ bar = pd.DataFrame(rows).sort_values('mean_loading', ascending=False).reset_inde
 plt.rcParams['pdf.fonttype'] = 42   # editable vector text
 
 
-def draw_barplot(bar_df, out_pdf, label_fs, annot_fs):
-    """One bar per regulon (sorted descending), colored by mouse archetype -> out_pdf."""
+def draw_barplot(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.16, show_log2or=False):
+    """One bar per regulon (sorted descending), colored by mouse archetype -> out_pdf.
+
+    If show_log2or, mark each bar at its base with the mouse log2 OR of its assigned archetype.
+    """
     with PdfPages(out_pdf) as pdf:
-        fig, ax = plt.subplots(figsize=(max(6.0, 0.16 * len(bar_df)), 5.6))
+        fig, ax = plt.subplots(figsize=(max(6.0, width_factor * len(bar_df)), 5.6))
         x = range(len(bar_df))
         colors = [ARCH_COLORS[a] for a in bar_df['arch'].values]
         ax.bar(x, bar_df['mean_loading'].values, color=colors, edgecolor='none', width=0.9)
@@ -159,7 +163,7 @@ def draw_barplot(bar_df, out_pdf, label_fs, annot_fs):
         ax.set_ylabel(YLABEL)
         ax.set_title(TITLE)
 
-        # annotate each bar with 'n genes with loading / n genes in regulon'
+        # annotate each bar tip with 'n genes with loading / n genes in regulon'
         ymax = bar_df['mean_loading'].abs().max()
         pad = 0.02 * ymax
         for xi, (val, npres, ntot) in enumerate(zip(bar_df['mean_loading'].values,
@@ -168,9 +172,20 @@ def draw_barplot(bar_df, out_pdf, label_fs, annot_fs):
             ax.text(xi, val + (pad if val >= 0 else -pad), f'{npres}/{ntot}',
                     ha='center', va=va, fontsize=annot_fs, color='black', rotation=90)
 
+        # mark each bar base with the mouse archetype log2 OR (A/C figure)
+        if show_log2or:
+            for xi, (val, lor) in enumerate(zip(bar_df['mean_loading'].values, bar_df['log2or'].values)):
+                if not np.isfinite(lor):
+                    continue
+                va = 'bottom' if val >= 0 else 'top'
+                ax.text(xi, (pad if val >= 0 else -pad), f'{lor:.1f}',
+                        ha='center', va=va, fontsize=annot_fs + 1, color='black',
+                        fontweight='bold', rotation=90)
+
         handles = [Patch(facecolor=ARCH_COLORS[a], label=a) for a in ARCH_ORDER
                    if (a in bar_df['arch'].values)]
-        ax.legend(handles=handles, title='mouse archetype', frameon=False,
+        leg_title = 'mouse archetype' + ('\n(base label = log2 OR)' if show_log2or else '')
+        ax.legend(handles=handles, title=leg_title, frameon=False,
                   loc='upper right', fontsize=8, title_fontsize=8)
 
         sns.despine(ax=ax)
@@ -184,9 +199,9 @@ print(f'Writing {OUT_PDF_BAR}...')
 draw_barplot(bar, OUT_PDF_BAR, label_fs=4, annot_fs=2.5)
 print(f'Saved {OUT_PDF_BAR}')
 
-# A/C-only subset (drop B and 'other')
+# A/C-only subset (drop B and 'other'); mark each bar with mouse archetype log2 OR
 bar_ac = bar[bar['arch'].isin(['A', 'C'])].reset_index(drop=True)
 print(f'Writing {OUT_PDF_AC} ({len(bar_ac)} A/C regulons)...')
-draw_barplot(bar_ac, OUT_PDF_AC, label_fs=6, annot_fs=4)
+draw_barplot(bar_ac, OUT_PDF_AC, label_fs=6, annot_fs=4, width_factor=0.5, show_log2or=True)
 print(f'Saved {OUT_PDF_AC}')
 print('Done.')
