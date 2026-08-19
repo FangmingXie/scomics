@@ -165,7 +165,8 @@ bar = pd.DataFrame(rows).sort_values('mean_loading', ascending=False).reset_inde
 plt.rcParams['pdf.fonttype'] = 42   # editable vector text
 
 
-def draw_barplot(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.16, show_log2or=False):
+def draw_barplot(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.16, show_log2or=False,
+                 criteria_fs=6):
     """One bar per regulon (sorted descending), colored by mouse archetype -> out_pdf.
 
     If show_log2or, mark each bar at its base with the mouse log2 OR of its assigned archetype.
@@ -211,7 +212,7 @@ def draw_barplot(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.16, show_lo
         if show_log2or:
             lines.append('bold label at bar base = mouse log2 OR of the assigned archetype')
         ax.text(0.995, 0.80, '\n'.join(lines), transform=ax.transAxes, ha='right', va='top',
-                fontsize=6, family='monospace', linespacing=1.5,
+                fontsize=criteria_fs, family='monospace', linespacing=1.5,
                 bbox=dict(boxstyle='round', facecolor='white', edgecolor='0.7', alpha=0.9))
 
         sns.despine(ax=ax)
@@ -220,9 +221,9 @@ def draw_barplot(bar_df, out_pdf, label_fs, annot_fs, width_factor=0.16, show_lo
         plt.close(fig)
 
 
-# full set (all 174 regulons)
+# full set (all 174 regulons); larger criteria font so the box is legible on the wide canvas
 print(f'Writing {OUT_PDF_BAR}...')
-draw_barplot(bar, OUT_PDF_BAR, label_fs=4, annot_fs=2.5)
+draw_barplot(bar, OUT_PDF_BAR, label_fs=4, annot_fs=2.5, criteria_fs=11)
 print(f'Saved {OUT_PDF_BAR}')
 
 # A/C-only subset (drop B and 'other'); mark each bar with mouse archetype log2 OR
