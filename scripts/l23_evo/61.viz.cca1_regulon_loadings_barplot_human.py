@@ -35,6 +35,8 @@ Outputs:
   local_data/fig/l23_evo/61.cca1_regulon_loadings_barplot_human_AC.pdf    (bar: mean loading, A/C)
   local_data/fig/l23_evo/61.cca1_regulon_loadings_boxplot_human.pdf       (box: distribution, all)
   local_data/fig/l23_evo/61.cca1_regulon_loadings_boxplot_human_AC.pdf    (box: distribution, A/C)
+  local_data/fig/l23_evo/61.cca1_regulon_mean_loading_mouse_vs_human_AC.pdf  (scatter: per-regulon
+      mean target CCA1 loading, human vs mouse — mouse loadings from the mouse CCA1 weights)
 """
 
 import os
@@ -54,6 +56,7 @@ IN_HUMAN_VX    = os.path.join(OUT_RES_DIR, '05.varimax_loadings.tsv')
 IN_MOUSE_VX    = os.path.join(OUT_RES_DIR, '18.mouse_varimax_loadings.tsv')
 IN_ORTHOLOGS   = os.path.join(PROJECT_ROOT, 'data', 'human_mouse_orthologs.tsv')
 IN_CCA_WEIGHTS = os.path.join(OUT_RES_DIR, '24.orthoaxis_cca_weights_human.tsv')
+IN_CCA_WEIGHTS_M = os.path.join(OUT_RES_DIR, '24.orthoaxis_cca_weights_mouse.tsv')
 IN_HUMAN_REG   = os.path.join(OUT_RES_DIR, '27.human_wang25_regulon_targets.tsv')
 IN_MOUSE_REG   = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '40.yoo25_L2_3_regulon_targets.tsv')
 IN_MOUSE_ENRICH= os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '41.L2_3_regulon_archetype_enrichment.tsv')
@@ -63,6 +66,7 @@ OUT_PDF_BAR    = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_barplot_hum
 OUT_PDF_BOX    = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_boxplot_human.pdf')
 OUT_PDF_BAR_AC = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_barplot_human_AC.pdf')
 OUT_PDF_BOX_AC = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_boxplot_human_AC.pdf')
+OUT_PDF_SCATTER = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_mean_loading_mouse_vs_human_AC.pdf')
 
 # --- parameters ---
 # The regulon set is UNFILTERED: every activating (+/+) regulon in the Wang25 human table
@@ -83,6 +87,8 @@ MIN_OVERLAP    = 5
 # Only plot regulons with at least this many target genes among the human HVGs (i.e. carrying a
 # CCA1 loading), so each bar's mean rests on enough genes to be meaningful.
 MIN_HVG_TARGETS = 10
+# For the human-vs-mouse mean-loading scatter: min mouse targets among mouse HVGs for a stable mean.
+MIN_MOUSE_TARGETS = 5
 # Archetype coloring: mouse arch_letter (A'/B'/C') -> display letter -> color.
 ARCH_COLORS    = {'A': 'C0', 'B': 'C1', 'C': 'C2', 'other': '#999999'}
 # Cross-species target-overlap panel (A/C figure): human targets up, mouse down, shared core.
@@ -139,6 +145,14 @@ w_cca1 = pd.read_csv(IN_CCA_WEIGHTS, sep='\t', index_col=0).loc[HUMAN_VX_COLS, C
 allz = (human_vx[HUMAN_VX_COLS].values - mu) / sd
 cca1 = pd.Series(allz @ w_cca1, index=human_vx.index)   # per-gene human CCA1 loading (all 2000 HVG)
 print(f'Human CCA1 gene loadings: {len(cca1)} HVGs (shared-ortholog fit n={len(shared)})')
+
+# --- mouse CCA1 gene loadings: same back-projection with the mouse VX weights (aligned axis) ---
+# The CCA jointly fits both species (canonical r>0), so mouse and human CCA1 share an orientation.
+shared_sub_m = mouse_vx.loc[shared['mouse_symbol'].values, MOUSE_VX_COLS].values
+mu_m = shared_sub_m.mean(axis=0)
+sd_m = shared_sub_m.std(axis=0)
+w_cca1_m = pd.read_csv(IN_CCA_WEIGHTS_M, sep='\t', index_col=0).loc[MOUSE_VX_COLS, CCA_AXIS].values
+cca1_mouse = pd.Series(((mouse_vx[MOUSE_VX_COLS].values - mu_m) / sd_m) @ w_cca1_m, index=mouse_vx.index)
 
 # --- regulon target sets (+/+ only), both species ---
 hreg = pd.read_csv(IN_HUMAN_REG, sep='\t')
@@ -332,6 +346,49 @@ def draw_ac_with_overlap(bar_df, out_pdf, mode, label_fs, annot_fs, width_factor
         plt.close(fig)
 
 
+def mouse_mean_loading(mouse_key):
+    """(mean mouse CCA1 loading over the mouse regulon's HVG targets, n targets); (nan, 0) if none."""
+    if mouse_key is None:
+        return float('nan'), 0
+    M = set(mreg.loc[mreg['regulon'] == mouse_key, 'Gene'])
+    present = [g for g in M if g in cca1_mouse.index]
+    return (float(cca1_mouse.loc[present].mean()) if present else float('nan')), len(present)
+
+
+def draw_mouse_human_scatter(df, out_pdf):
+    """Scatter of mean target CCA1 loading, human (x) vs mouse (y), one point per A/C regulon."""
+    with PdfPages(out_pdf) as pdf:
+        fig, ax = plt.subplots(figsize=(6.4, 6.2))
+        for a in ('A', 'C'):
+            sub = df[df['arch'] == a]
+            ax.scatter(sub['human_mean'], sub['mouse_mean'], c=ARCH_COLORS[a], s=48, label=a,
+                       edgecolor='0.3', linewidth=0.4, zorder=3)
+        for _, r in df.iterrows():
+            ax.annotate(r['name'], (r['human_mean'], r['mouse_mean']), fontsize=6,
+                        xytext=(3, 3), textcoords='offset points')
+        ax.axhline(0, color='0.6', linewidth=0.6)
+        ax.axvline(0, color='0.6', linewidth=0.6)
+        lo = min(df['human_mean'].min(), df['mouse_mean'].min())
+        hi = max(df['human_mean'].max(), df['mouse_mean'].max())
+        ax.plot([lo, hi], [lo, hi], ls='--', color='0.5', linewidth=0.7, zorder=1, label='y = x')
+
+        r_p = np.corrcoef(df['human_mean'], df['mouse_mean'])[0, 1]
+        r_s = df['human_mean'].corr(df['mouse_mean'], method='spearman')
+        ax.set_xlabel('human mean target CCA1 loading')
+        ax.set_ylabel('mouse mean target CCA1 loading')
+        ax.set_title('A/C regulons — mean target CCA1 loading: human vs mouse')
+        ax.legend(title='mouse archetype', frameon=False, loc='lower right', fontsize=8, title_fontsize=8)
+        ax.text(0.03, 0.97,
+                f'Pearson r = {r_p:.2f}\nSpearman ρ = {r_s:.2f}\n'
+                f'n = {len(df)} regulons\n(human ≥{MIN_HVG_TARGETS}, mouse ≥{MIN_MOUSE_TARGETS} HVG targets)',
+                transform=ax.transAxes, ha='left', va='top', fontsize=8,
+                bbox=dict(boxstyle='round', facecolor='white', edgecolor='0.7', alpha=0.9))
+        sns.despine(ax=ax)
+        fig.tight_layout()
+        pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
+        plt.close(fig)
+
+
 def cross_species_overlap(human_key, mouse_key):
     """(n_human, n_mouse, overlap, jaccard) for a regulon's mouse vs human targets.
 
@@ -366,4 +423,16 @@ for mode, out_full, out_ac in [('bar', OUT_PDF_BAR, OUT_PDF_BAR_AC),
     print(f'Writing {out_ac} ({len(bar_ac)} A/C regulons)...')
     draw_ac_with_overlap(bar_ac, out_ac, mode, label_fs=6, annot_fs=4)
     print(f'Saved {out_ac}')
+
+# --- human vs mouse mean target CCA1 loading scatter (A/C regulons) ---
+scat = bar[bar['arch'].isin(['A', 'C'])].copy()
+scat['human_mean'] = scat['mean_loading']
+mm = scat['mouse'].apply(lambda k: pd.Series(mouse_mean_loading(k), index=['mouse_mean', 'mouse_n']))
+scat[['mouse_mean', 'mouse_n']] = mm
+scat = scat[scat['mouse_n'] >= MIN_MOUSE_TARGETS].reset_index(drop=True)
+for _, r in scat.iterrows():
+    print(f"  {r['name']}: human_mean={r['human_mean']:.3f} mouse_mean={r['mouse_mean']:.3f} (mouse_n={int(r['mouse_n'])})")
+print(f'Writing {OUT_PDF_SCATTER} ({len(scat)} regulons)...')
+draw_mouse_human_scatter(scat, OUT_PDF_SCATTER)
+print(f'Saved {OUT_PDF_SCATTER}')
 print('Done.')
