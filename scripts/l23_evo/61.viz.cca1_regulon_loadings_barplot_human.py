@@ -368,9 +368,14 @@ def draw_mouse_human_scatter(df, out_pdf):
                         xytext=(3, 3), textcoords='offset points')
         ax.axhline(0, color='0.6', linewidth=0.6)
         ax.axvline(0, color='0.6', linewidth=0.6)
-        lo = min(df['human_mean'].min(), df['mouse_mean'].min())
-        hi = max(df['human_mean'].max(), df['mouse_mean'].max())
-        ax.plot([lo, hi], [lo, hi], ls='--', color='0.5', linewidth=0.7, zorder=1, label='y = x')
+
+        # independent (non-equal-aspect) axis ranges: each species scaled to its own data range
+        hmin, hmax = df['human_mean'].min(), df['human_mean'].max()
+        mmin, mmax = df['mouse_mean'].min(), df['mouse_mean'].max()
+        hpad, mpad = 0.10 * (hmax - hmin), 0.10 * (mmax - mmin)
+        ax.set_xlim(hmin - hpad, hmax + hpad)
+        ax.set_ylim(mmin - mpad, mmax + mpad)
+        ax.set_aspect('auto')   # do NOT force equal aspect; mouse and human use independent scales
 
         r_p = np.corrcoef(df['human_mean'], df['mouse_mean'])[0, 1]
         r_s = df['human_mean'].corr(df['mouse_mean'], method='spearman')
