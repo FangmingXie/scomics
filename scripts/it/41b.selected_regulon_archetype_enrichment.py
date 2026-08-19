@@ -17,6 +17,9 @@ Only activating (+/+) regulons are shown. Cell color is the Haldane-Anscombe log
 ratio; '*' marks cells clearing all three of FDR < STAR_FDR, log2 OR > STAR_LOG2OR, and
 overlap >= STAR_MIN_OVERLAP genes.
 
+Cells resting on fewer than MASK_MIN_OVERLAP shared genes are grayed rather than colored
+(see that constant for why), and every cell is labelled with its overlap gene count.
+
 Statistics for panel 2 replicate 41 exactly (same universe reconstruction, same
 Haldane-Anscombe log2 OR, one-sided Fisher, BH-FDR across all (archetype, regulon) pairs
 within a subclass) by importing 41's helpers.
@@ -36,7 +39,7 @@ Outputs:
   local_data/res/it/41b.l23_regulon_all_subclass_enrichment.tsv  (panel 2 long, all regulons)
   local_data/res/it/41b.selected_native_log2or.tsv   / _fdr.tsv   (panel 1 matrices)
   local_data/res/it/41b.selected_l23set_log2or.tsv   / _fdr.tsv   (panel 2 matrices)
-  local_data/fig/it/41b.selected_regulon_archetype_enrichment.html
+  local_data/fig/it/41b.selected_regulon_archetype_enrichment_masked.html
 """
 
 import os
@@ -69,7 +72,7 @@ OUT_NATIVE = {'log2_or': os.path.join(RES_DIR, '41b.selected_native_log2or.tsv')
               'fdr': os.path.join(RES_DIR, '41b.selected_native_fdr.tsv')}
 OUT_L23SET = {'log2_or': os.path.join(RES_DIR, '41b.selected_l23set_log2or.tsv'),
               'fdr': os.path.join(RES_DIR, '41b.selected_l23set_fdr.tsv')}
-OUT_HTML = os.path.join(FIG_DIR, '41b.selected_regulon_archetype_enrichment.html')
+OUT_HTML = os.path.join(FIG_DIR, '41b.selected_regulon_archetype_enrichment_masked.html')
 
 SELECTED_TFS = ['Fos', 'Fosb', 'Fosl2', 'Junb', 'Egr1', 'Egr2', 'Egr3', 'Egr4', 'Atf6', 'Smad3']
 # non-IEG regulons carried as controls; drawn below a horizontal rule
@@ -81,6 +84,12 @@ STAR_FDR = 0.05         # BH-FDR below this
 STAR_LOG2OR = 2.0       # log2 odds ratio above this
 STAR_MIN_OVERLAP = 10   # at least this many genes shared by the regulon and the marker set
 COLOR_ABS = 5.0     # fixed log2 OR colorbar range [-COLOR_ABS, COLOR_ABS] (matches 41)
+# In the masked figure, cells resting on fewer than this many shared genes are drawn gray
+# instead of colored: at a median expected overlap of ~1 gene the Haldane-Anscombe
+# correction gives sizeable positive log2 OR to cells with little or no actual overlap
+# (e.g. L4 Bach2 A': overlap=0, FDR=1.0, log2 OR=+2.28), which reads as enrichment.
+MASK_MIN_OVERLAP = 5
+MASK_COLOR = '#d9d9d9'
 
 # layer key (41's `layer`) -> depth-arc table token / display label, in laminar order
 LAYER_TOKEN = [('L2_3', 'L23', 'L2/3'), ('L4', 'L4', 'L4'),
@@ -216,19 +225,42 @@ def to_matrices(long, rows, cols):
             for key in ['log2_or', 'fdr', 'overlap', 'n_targets']}
 
 
+def cell_text(m, tested, sig):
+    """Per-cell label: the overlap gene count, suffixed '*' when the cell is significant."""
+    ov, out = m['overlap'].values, []
+    for i in range(ov.shape[0]):
+        out.append([f'{int(ov[i, j])}' + ('*' if sig[i, j] else '') if tested[i, j] else ''
+                    for j in range(ov.shape[1])])
+    return out
+
+
 def add_panel(fig, row, mats, rows, cols, primed, n_ieg):
     m = mats
-    sig = ((m['fdr'].values < STAR_FDR)
+    tested = np.isfinite(m['log2_or'].values)   # False where the regulon does not exist here
+    sig = (tested
+           & (m['fdr'].values < STAR_FDR)
            & (m['log2_or'].values > STAR_LOG2OR)
            & (m['overlap'].values >= STAR_MIN_OVERLAP))
-    stars = np.where(np.isfinite(m['fdr'].values) & sig, '*', '')
+    thin = tested & (m['overlap'].values < MASK_MIN_OVERLAP)   # too few shared genes to trust
     customdata = np.dstack([m['overlap'].values, m['n_targets'].values, m['fdr'].values])
+    hover = ('TF=%{y}<br>%{x}<br>overlap=%{customdata[0]}'
+             '<br>n_targets=%{customdata[1]}<br>FDR=%{customdata[2]:.2e}')
+
+    # gray underlay for the thin cells; the colored trace leaves them NaN so it shows through
+    if thin.any():
+        fig.add_trace(go.Heatmap(
+            z=np.where(thin, 1.0, np.nan), x=cols, y=rows,
+            colorscale=[[0, MASK_COLOR], [1, MASK_COLOR]], showscale=False,
+            zmin=0, zmax=1, xgap=1, ygap=1, customdata=customdata,
+            hovertemplate=hover + f'<br><i>masked: overlap < {MASK_MIN_OVERLAP}</i><extra></extra>',
+        ), row=row, col=1)
+
     fig.add_trace(go.Heatmap(
-        z=m['log2_or'].values, x=cols, y=rows, coloraxis='coloraxis',
-        text=stars, texttemplate='%{text}', textfont=dict(size=16, color='black'),
+        z=np.where(thin, np.nan, m['log2_or'].values), x=cols, y=rows, coloraxis='coloraxis',
+        text=cell_text(m, tested, sig), texttemplate='%{text}',
+        textfont=dict(size=11, color='black'),
         xgap=1, ygap=1, customdata=customdata,
-        hovertemplate=('TF=%{y}<br>%{x}<br>log2 OR=%{z:.2f}<br>overlap=%{customdata[0]}'
-                       '<br>n_targets=%{customdata[1]}<br>FDR=%{customdata[2]:.2e}<extra></extra>'),
+        hovertemplate=hover + '<br>log2 OR=%{z:.2f}<extra></extra>',
     ), row=row, col=1)
     fig.update_yaxes(autorange='reversed', row=row, col=1)
     fig.update_xaxes(tickangle=-45, row=row, col=1)
@@ -268,27 +300,35 @@ def main():
     ]
     print(f'\n  {len(rows)} TFs ({n_ieg} IEG + {len(ctrl_rows)} control) '
           f'x {len(cols)} subclass-archetype columns')
+    outs_all = []
+    for title, mats, outs in panels:
+        tested = mats['log2_or'].notna()
+        thin = int((tested & (mats['overlap'] < MASK_MIN_OVERLAP)).sum().sum())
+        print(f'  {title}: {int(tested.sum().sum())} of {len(rows) * len(cols)} cells populated, '
+              f'{thin} masked (overlap<{MASK_MIN_OVERLAP})')
+        for key, path in outs.items():
+            mats[key].to_csv(path, sep='\t')
+            outs_all.append((key, path))
+
+    for key, path in outs_all:
+        print(f'    wrote -> {path}')
 
     fig = make_subplots(rows=len(panels), cols=1, shared_xaxes=True, vertical_spacing=0.10,
                         subplot_titles=[t for t, _m, _o in panels])
-    for i, (title, mats, outs) in enumerate(panels, start=1):
-        n_filled = int(mats['log2_or'].notna().sum().sum())
-        print(f'  {title}: {n_filled} of {len(rows) * len(cols)} cells populated')
-        for key, path in outs.items():
-            mats[key].to_csv(path, sep='\t')
-            print(f'    wrote -> {path}')
+    for i, (title, mats, _outs) in enumerate(panels, start=1):
         add_panel(fig, i, mats, rows, cols, primed, n_ieg)
 
     fig.update_layout(
         title=f'Selected regulons ({SIGN}) — archetype marker enrichment across mouse IT '
               f'subclasses (log2 OR)<br>'
-              f'<sub>* FDR<{STAR_FDR:g} AND log2 OR>{STAR_LOG2OR:g} AND '
-              f'overlap>={STAR_MIN_OVERLAP} genes</sub>',
+              f'<sub>cell label = overlap gene count; * FDR<{STAR_FDR:g} AND '
+              f'log2 OR>{STAR_LOG2OR:g} AND overlap>={STAR_MIN_OVERLAP}; '
+              f'gray = overlap<{MASK_MIN_OVERLAP}, too few shared genes to trust</sub>',
         coloraxis=dict(colorscale='RdBu_r', cmid=0, cmin=-COLOR_ABS, cmax=COLOR_ABS,
                        colorbar=dict(title='log2 OR', len=0.9, thickness=14)),
         height=160 + len(panels) * (26 * len(rows) + 70),
         width=max(760, 62 * len(cols) + 340),
-        plot_bgcolor='white', margin=dict(t=110),
+        plot_bgcolor='white', margin=dict(t=110), showlegend=False,
     )
     _write_fig(fig, OUT_HTML)
 
