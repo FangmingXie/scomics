@@ -17,6 +17,19 @@ One box per (subclass, archetype), 11 in total, laid out left-to-right in lamina
 This is the diagonal of a (marker-set x archetype) grid -- not full columns. Box sizes are
 therefore deliberately unequal (they are the per-archetype marker counts: 55..206).
 
+A lower barplot panel decomposes each box into the count of genes that are significantly moved
+by dark-rearing (FDR < FDR_THRESH AND |log2FC| > LOG2FC_THRESH), up drawn above zero and down
+below. Its bars are a strict subset of the points in the box directly above -- same genes, same
+cells, same fold changes.
+
+SIGNIFICANCE: the pseudobulk has one column per (age, archetype), so it carries no replicate
+structure and cannot itself yield a p-value. Significance is therefore taken per cell: a
+two-sided Wilcoxon rank-sum (Mann-Whitney U) on per-cell CP10k log2 expression, P21DR vs P21,
+over the *same* top-N purest cells that formed the pseudobulk columns, with BH-FDR applied
+across that archetype's marker genes. This matches how scripts 33-36 derive the marker sets
+themselves. Keeping the test on the same cells that produced the fold change is what makes the
+bars an exact decomposition of the boxes; the rank test is invariant to the CP10k/log2 transform.
+
 METHOD (steps 1-6 replicate scripts/it/50.yoo25_l23_ieg_p21dr_vs_p21_foldchange.py:99-229,
 generalized over a subclass loop):
   1. Read the subclass marker TSV; NOC is inferred from it (L5IT has 2 archetypes, not 3).
@@ -48,7 +61,7 @@ Reads:
   local_data/res/it/36.follow.two_L6IT_archetype_markers.tsv
   local_data/res/it_evo/15.mouse_IT_joint_archetype_arc_order.tsv
 Outputs:
-  local_data/fig/it/52.yoo25_it_archetype_marker_p21dr_vs_p21_boxplot.pdf
+  local_data/fig/it/52.yoo25_it_archetype_marker_p21dr_vs_p21_boxplot.pdf  (2 panels)
   local_data/res/it/52.yoo25_it_archetype_marker_p21dr_vs_p21_boxplot.tsv
 """
 
@@ -57,7 +70,9 @@ import os
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+import scipy.stats
 import anndata as ad
+from statsmodels.stats.multitest import multipletests
 
 import matplotlib
 matplotlib.use('Agg')
@@ -105,8 +120,15 @@ CP10K        = 1e4      # CP10k target for the log2 scoring expression
 CP_TARGET    = 1e6      # CPM for pseudobulk expression
 PSEUDO       = 1.0      # CPM pseudocount added before the log2 ratio
 
+# Significance cuts for the lower barplot panel.
+FDR_THRESH    = 0.05   # BH-FDR, computed within each archetype's own marker set
+LOG2FC_THRESH = 1.0    # |log2(P21DR/P21)| must exceed this as well
+
 # Color follows the DISPLAYED (primed) label, never the internal key -- ARCHETYPE_MAPPING.md.
 ARCH_COLORS = {"A'": 'C0', "B'": 'C1', "C'": 'C2', "D'": 'C3'}
+# Up/down colors reuse the volcano convention of scripts/viz.py:save_volcano_pdf.
+COLOR_UP = '#d62728'
+COLOR_DN = '#1f77b4'
 
 
 def load_arch_map():
@@ -216,7 +238,7 @@ def main():
         # --- pseudobulk one column per (age, archetype): top-N purest, SUM raw counts ---
         columns = [(a, k) for a in AGES for k in letters]
         pb = np.zeros((adata.raw.shape[1], len(columns)), dtype=np.float64)
-        n_used = {}
+        n_used, top_idx = {}, {}
         for j, (a, k) in enumerate(columns):
             ki = letters.index(k)
             cell_idx = np.where((pool_ages == a) & (assigned == k))[0]
@@ -225,6 +247,7 @@ def main():
                                  f'N_TOP_CELLS={N_TOP_CELLS}')
             top = cell_idx[np.argsort(scores[cell_idx, ki])[::-1][:N_TOP_CELLS]]
             n_used[(a, k)] = int(top.size)
+            top_idx[(a, k)] = top
             pb[:, j] = Xraw[top].sum(axis=0)
             print(f'  {a:5s} {cfg["relabel"][k]} (internal {k}): '
                   f'n_assigned={cell_idx.size:5d}  n_used={top.size}')
@@ -244,12 +267,31 @@ def main():
             c_p21 = cpm[gi, col_index[('P21', k)]]
             c_p21dr = cpm[gi, col_index[('P21DR', k)]]
             fc = np.log2((c_p21dr + PSEUDO) / (c_p21 + PSEUDO))
+
+            # per-cell Wilcoxon rank-sum over the SAME top-N cells that formed the pseudobulk,
+            # so the bars below are an exact decomposition of the boxes above
+            i21, i21dr = top_idx[('P21', k)], top_idx[('P21DR', k)]
+            e21 = np.log2(Xraw[np.ix_(i21, gi)] / depth[i21, None] * CP10K + 1.0)
+            e21dr = np.log2(Xraw[np.ix_(i21dr, gi)] / depth[i21dr, None] * CP10K + 1.0)
+            pval = scipy.stats.mannwhitneyu(e21dr, e21, axis=0, alternative='two-sided').pvalue
+            if not np.all(np.isfinite(pval)):
+                raise ValueError(f'{S} {k}: non-finite Wilcoxon p-value')
+            fdr = multipletests(pval, method='fdr_bh')[1]
+            n_up = int(((fdr < FDR_THRESH) & (fc > LOG2FC_THRESH)).sum())
+            n_dn = int(((fdr < FDR_THRESH) & (fc < -LOG2FC_THRESH)).sum())
+            print(f'  {cfg["relabel"][k]} markers n={len(genes):3d}  '
+                  f'sig up={n_up:3d}  sig down={n_dn:3d}  '
+                  f'(FDR<{FDR_THRESH}, |log2FC|>{LOG2FC_THRESH})')
+
             for n, g in enumerate(genes):
                 rows.append(dict(
                     subclass=S, archetype=cfg['relabel'][k], archetype_internal=k,
                     arch_rank=cfg['rank'][k], gene=g,
                     cpm_P21=float(c_p21[n]), cpm_P21DR=float(c_p21dr[n]),
                     log2FC_P21DR_over_P21=float(fc[n]),
+                    pval=float(pval[n]), fdr=float(fdr[n]),
+                    sig_up=bool(fdr[n] < FDR_THRESH and fc[n] > LOG2FC_THRESH),
+                    sig_down=bool(fdr[n] < FDR_THRESH and fc[n] < -LOG2FC_THRESH),
                     n_used_P21=n_used[('P21', k)], n_used_P21DR=n_used[('P21DR', k)]))
 
     out = pd.DataFrame(rows).sort_values(['arch_rank', 'gene']).reset_index(drop=True)
@@ -257,10 +299,12 @@ def main():
     print(f'\nWrote {OUT_TSV} ({len(out)} rows)')
 
     # -----------------------------------------------------------------------
-    # Figure: one box per (subclass, archetype), ordered by laminar-depth arc_rank
+    # Figure: boxplot of per-gene log2FC (top) + significant up/down counts (bottom),
+    # both ordered by laminar-depth arc_rank
     # -----------------------------------------------------------------------
     boxes = (out.groupby(['arch_rank', 'subclass', 'archetype'], sort=True)
-                .size().reset_index(name='n').sort_values('arch_rank'))
+                .agg(n=('gene', 'size'), n_up=('sig_up', 'sum'), n_dn=('sig_down', 'sum'))
+                .reset_index().sort_values('arch_rank'))
     data, labels, colors, subclasses = [], [], [], []
     for r in boxes.itertuples():
         vals = out.loc[out['arch_rank'] == r.arch_rank, 'log2FC_P21DR_over_P21'].values
@@ -269,10 +313,16 @@ def main():
         colors.append(ARCH_COLORS[r.archetype])
         subclasses.append(r.subclass)
     npos = len(data)
-    print(f'  {npos} boxes: ' + ', '.join(f'{s} {l.splitlines()[0]}'
-                                          for s, l in zip(subclasses, labels)))
+    n_up = boxes['n_up'].values.astype(int)
+    n_dn = boxes['n_dn'].values.astype(int)
+    print(f'  {npos} boxes: ' + ', '.join(f'{s_} {l.splitlines()[0]}'
+                                          for s_, l in zip(subclasses, labels)))
 
-    fig, ax = plt.subplots(figsize=(1.0 * npos + 2.0, 4.6))
+    fig, (ax, ax_b) = plt.subplots(
+        2, 1, sharex=True, figsize=(1.0 * npos + 2.0, 6.6),
+        gridspec_kw={'height_ratios': [3.0, 1.5], 'hspace': 0.08})
+
+    # ---- top panel: per-gene log2FC, one box per (subclass, archetype) ----
     bp = ax.boxplot(data, widths=0.6, showfliers=False, patch_artist=True,
                     medianprops=dict(color='black', linewidth=1.4))
     for patch, c in zip(bp['boxes'], colors):
@@ -287,27 +337,57 @@ def main():
                    s=4, color='black', alpha=0.35, linewidths=0, zorder=3, rasterized=True)
 
     ax.axhline(0.0, color='grey', linewidth=1.0, linestyle='--', zorder=1)
-    ax.set_xticks(np.arange(1, npos + 1))
-    ax.set_xticklabels(labels, fontsize=9)
+    # the significance cut the lower panel counts against
+    for y in (LOG2FC_THRESH, -LOG2FC_THRESH):
+        ax.axhline(y, color='grey', linewidth=0.7, linestyle=':', zorder=1)
     ax.set_ylabel('log2(P21DR / P21)', fontsize=10)
     ax.set_xlim(0.4, npos + 0.6)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-
-    # subclass blocks: dividers between them, label centred under each
-    trans = ax.get_xaxis_transform()
-    starts = [i for i in range(npos) if i == 0 or subclasses[i] != subclasses[i - 1]]
-    for i in starts[1:]:
-        ax.axvline(i + 0.5, color='0.75', linewidth=0.8, linestyle=':', zorder=0)
-    for bi, i in enumerate(starts):
-        j = starts[bi + 1] if bi + 1 < len(starts) else npos
-        ax.text((i + j + 1) / 2.0, -0.16, subclasses[i], transform=trans,
-                ha='center', va='top', fontsize=11, fontweight='bold')
-
     ax.set_title("Dark-rearing response of each archetype's own marker genes\n"
                  f'(Yoo25 mouse IT; top {N_TOP_CELLS} purest cells per age x archetype)',
                  fontsize=11)
-    fig.tight_layout()
+
+    # ---- bottom panel: significant gene counts, up above zero / down below ----
+    x = np.arange(1, npos + 1)
+    ax_b.bar(x, n_up, width=0.6, color=COLOR_UP, alpha=0.85,
+             label=f'up (log2FC > {LOG2FC_THRESH:g})')
+    ax_b.bar(x, -n_dn, width=0.6, color=COLOR_DN, alpha=0.85,
+             label=f'down (log2FC < -{LOG2FC_THRESH:g})')
+    ax_b.axhline(0.0, color='black', linewidth=0.8)
+    for xi in range(npos):
+        if n_up[xi]:
+            ax_b.text(x[xi], n_up[xi], str(n_up[xi]), ha='center', va='bottom', fontsize=8)
+        if n_dn[xi]:
+            ax_b.text(x[xi], -n_dn[xi], str(n_dn[xi]), ha='center', va='top', fontsize=8)
+    ax_b.set_ylabel('significant genes', fontsize=10)
+    ax_b.spines['top'].set_visible(False)
+    ax_b.spines['right'].set_visible(False)
+    # legend top-right: the tallest bars are down bars on the left, so this stays clear of them
+    ax_b.legend(frameon=False, fontsize=8, loc='upper right', ncol=2)
+    # symmetric limits, with headroom for the count labels and the legend
+    lim = max(int(max(n_up.max(), n_dn.max())), 1) * 1.55
+    ax_b.set_ylim(-lim, lim)
+    # y ticks as positive counts on both sides (the sign encodes direction, not a negative count)
+    yt = ax_b.get_yticks()
+    ax_b.set_yticks(yt)
+    ax_b.set_yticklabels([f'{abs(int(t))}' for t in yt], fontsize=9)
+    ax_b.set_ylim(-lim, lim)
+
+    ax_b.set_xticks(x)
+    ax_b.set_xticklabels(labels, fontsize=9)
+
+    # subclass blocks: dividers on both panels, label centred under each on the lower one
+    starts = [i for i in range(npos) if i == 0 or subclasses[i] != subclasses[i - 1]]
+    for a_ in (ax, ax_b):
+        for i in starts[1:]:
+            a_.axvline(i + 0.5, color='0.75', linewidth=0.8, linestyle=':', zorder=0)
+    trans = ax_b.get_xaxis_transform()
+    for bi, i in enumerate(starts):
+        j = starts[bi + 1] if bi + 1 < len(starts) else npos
+        ax_b.text((i + j + 1) / 2.0, -0.22, subclasses[i], transform=trans,
+                  ha='center', va='top', fontsize=11, fontweight='bold')
+
     fig.savefig(OUT_PDF, bbox_inches='tight', dpi=300)
     plt.close(fig)
     print(f'Wrote {OUT_PDF}')
