@@ -127,8 +127,10 @@ MIN_MEAN_CPM = 1.0  # a gene must average >= this CPM over the two columns to en
 
 FDR_THRESH = 0.05   # BH-FDR across the archetypes, for the significance stars
 
-# Color follows the DISPLAYED (primed) label, never the internal key -- ARCHETYPE_MAPPING.md.
-ARCH_COLORS   = {"A'": 'C0', "B'": 'C1', "C'": 'C2', "D'": 'C3'}
+# The two colors encode the CONTRAST being tested (marker set vs null control), not archetype
+# identity -- every box pair here is the same comparison, so per-archetype colors would only
+# invite the eye to compare across pairs instead of within them.
+MARKER_COLOR  = '#2b7bba'
 CONTROL_COLOR = '0.72'   # grey: the control set carries no archetype identity
 
 
@@ -448,8 +450,8 @@ def main():
     exp_c = [out.loc[(out['arch_rank'] == r.arch_rank) & (out['gene_set'] == 'control'),
                      'mean_log2cpm'].values for r in stats.itertuples()]
 
-    fig, axes = plt.subplots(2, 1, sharex=True, figsize=(1.15 * npos + 2.0, 7.4),
-                             gridspec_kw={'height_ratios': [3.0, 1.5], 'hspace': 0.10})
+    fig, axes = plt.subplots(2, 1, sharex=True, figsize=(1.15 * npos + 2.0, 7.8),
+                             gridspec_kw={'height_ratios': [3.0, 1.5], 'hspace': 0.26})
     ax, ax_q = axes
 
     def paired_boxes(ax_, vals_t, vals_c, showfliers):
@@ -462,15 +464,16 @@ def main():
                           patch_artist=True, medianprops=dict(color='black', linewidth=1.3),
                           flierprops=dict(marker='.', markersize=1.5, alpha=0.3,
                                           markeredgewidth=0))
-        for patch, r in zip(b_t['boxes'], stats.itertuples()):
-            patch.set_facecolor(ARCH_COLORS[r.archetype])
+        for patch in b_t['boxes']:
+            patch.set_facecolor(MARKER_COLOR)
             patch.set_alpha(0.65)
         for patch in b_c['boxes']:
             patch.set_facecolor(CONTROL_COLOR)
             patch.set_alpha(0.65)
+        return b_t, b_c
 
     # ---- top panel: log2FC, marker set vs matched control ----
-    paired_boxes(ax, lfc_t, lfc_c, showfliers=False)
+    b_t, b_c = paired_boxes(ax, lfc_t, lfc_c, showfliers=False)
     for xi, vals in enumerate(lfc_t):   # markers are few enough to show individually
         n = len(vals)
         jitter = (np.arange(n) - (n - 1) / 2.0) / n * 0.26
@@ -482,11 +485,16 @@ def main():
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-    # significance bracket over each pair, at a common height above the tallest whisker
-    ymin = min(np.percentile(np.concatenate(lfc_t + lfc_c), 0.2), -1.0)
-    ytop = max(np.percentile(v, 99.5).max() for v in lfc_t)
-    ytop = max(ytop, max(np.percentile(v, 97.5) for v in lfc_c))
+    # significance bracket over each pair, at a common height above everything drawn.
+    # Limits come from the DRAWN artists (whisker ends and the plotted marker points), never
+    # from a percentile -- a percentile cut silently amputates the whisker of whichever
+    # archetype responded most, which is exactly the box a reader needs to see whole.
+    whisk = np.concatenate([np.asarray(l.get_ydata(), dtype=float)
+                            for b in (b_t, b_c) for l in b['whiskers']])
+    drawn = np.concatenate([whisk] + lfc_t)
+    ymin, ytop = float(drawn.min()), float(drawn.max())
     span = ytop - ymin
+    ymin -= 0.03 * span
     y_br = ytop + 0.10 * span
     for xi, r in enumerate(stats.itertuples()):
         ax.plot([x[xi] - off, x[xi] - off, x[xi] + off, x[xi] + off],
@@ -495,8 +503,8 @@ def main():
                 fontsize=8 if r.stars != 'n.s.' else 7, color='0.2')
     ax.set_ylim(ymin, y_br + 0.16 * span)
 
-    handles = [plt.Rectangle((0, 0), 1, 1, facecolor='0.35', alpha=0.65,
-                             label="archetype marker set"),
+    handles = [plt.Rectangle((0, 0), 1, 1, facecolor=MARKER_COLOR, alpha=0.65,
+                             label='archetype marker set'),
                plt.Rectangle((0, 0), 1, 1, facecolor=CONTROL_COLOR, alpha=0.65,
                              label='expression-matched control set')]
     ax.legend(handles=handles, frameon=False, fontsize=8, loc='lower left', ncol=2)
@@ -513,9 +521,11 @@ def main():
     ax_q.text(0.005, 0.96, 'matching QC: control drawn to match marker expression',
               transform=ax_q.transAxes, fontsize=8, va='top', ha='left', color='0.35')
 
-    # ---- x tick labels and subclass blocks on the bottom panel only ----
-    ax_q.set_xticks(x)
-    ax_q.set_xticklabels(labels, fontsize=9)
+    # ---- x tick labels on both panels; subclass blocks on the bottom one only ----
+    for a_ in axes:
+        a_.set_xticks(x)
+        a_.set_xticklabels(labels, fontsize=9)
+        a_.tick_params(labelbottom=True)   # sharex hides the upper labels by default
     starts_ = [i for i in range(npos) if i == 0 or subclasses[i] != subclasses[i - 1]]
     for a_ in axes:
         for i in starts_[1:]:
