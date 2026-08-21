@@ -22,21 +22,31 @@ each layer's regulon targets moves the two statistics by:
     L5IT     +0.972     +0.094
     L6IT     +0.944     -0.038
 
-10-120x more stable, as on yoo25. Note the naive offset is about HALF yoo25's (+0.94 vs
-+1.46..+2.09) because gao25's regulons cover a different share of the universe -- a reason for
-55b to re-derive its thresholds rather than inherit 54b's, not a reason to skip the correction.
+10-120x more stable, as on yoo25. The naive offset is about HALF yoo25's (+0.94 vs
++1.46..+2.09) because gao25's regulons cover a different share of the universe. That prompted a
+check of whether 54b's cutoffs still fit gao25; they do -- see 55b -- so the two families share
+a colour scale and are directly comparable.
 
-REGULON IDENTITY DIFFERS BETWEEN THE TWO CATALOGUES, and this script deliberately preserves the
-difference. 40 (yoo25) keeps a regulon's DIRECT targets when it exists in both direct and
-extended forms, falling back to extended otherwise. 42-45 (gao25) ignore `is_extended` entirely
-and union direct + extended for the same TF + sign. `load_regulons_gao25` below keeps 42-45's
-union rule so that 55 is directly comparable to the naive gao25 results it supersedes -- but it
-means `Rfx3_+/+` is a DIFFERENT GENE SET in the 54 and 55 families, which silently weakens any
-yoo25-vs-gao25 comparison by regulon name. Aligning the rule is a separate, deliberate change.
+REGULON IDENTITY IS ALIGNED WITH 40 (yoo25): when a TF + sign key exists in both direct and
+extended form, its DIRECT targets are kept and the extended ones dropped; keys present in only
+one form keep that form. 42-45 instead ignored `is_extended` and unioned the two, so a regulon
+name could mean a different gene set in the gao25 and yoo25 families. `PREFER_DIRECT` below
+implements 40's rule so it cannot.
+
+ON THE CURRENT DATA THIS CHANGES NOTHING, and that is a fact about the input rather than a
+property of the rule: **no gao25 TF + sign key appears in both forms** -- 0 of 77 / 78 / 52 / 48
+keys for L2/3 / L4 / L5IT / L6IT, checked across all sign patterns and confirmed independently
+against the `is_extended` column and the `eRegulon_name` string, which agree everywhere. So the
+union rule and 40's rule coincide here and every number below is unchanged. The rule is made
+explicit anyway: it removes a latent divergence, and if the upstream gao25 table is ever
+regenerated with overlapping forms this script will not silently drift from 54's. The count of
+dual-form keys is printed per layer, so the day that stops being zero is visible in the log.
 
 VERIFY_AGAINST_NAIVE re-checks, after the run, that this script's internally recomputed log2_or
 reproduces 42-45's committed tables. That is the gate on the consolidation: it proves the
-four-into-one merge changed the null and nothing else.
+four-into-one merge changed the null and nothing else. Regulons that exist in both forms are
+excluded from the strict comparison, since those are exactly the ones PREFER_DIRECT is meant to
+change -- currently there are none, so nothing is excluded.
 
 Reads (per layer):
   local_data/res/it/3X.follow.two_*_archetype_markers.tsv   (via 41.LAYERS)
@@ -84,6 +94,12 @@ LAYER_TOKEN = {'L2_3': 'l23', 'L4': 'l4', 'L5IT': 'l5', 'L6IT': 'l6'}
 NAIVE_SCRIPT = {'L2_3': '42', 'L4': '43', 'L5IT': '44', 'L6IT': '45'}
 # gao25 carries only these two sign patterns; kept for parity with 42-45
 KEEP_DIRECTIONS = {'+/+', '-/+'}
+# 40's rule: a TF + sign key present in both forms keeps its DIRECT targets. See the docstring
+# -- currently a no-op on gao25, kept explicit so the two families cannot drift apart.
+PREFER_DIRECT = True
+# layer -> the keys that existed in both forms, filled by _read_gao25 and used to scope the
+# verification below. Expected empty; if it ever is not, the log and the gate both say so.
+DUAL_FORM = {}
 VERIFY_AGAINST_NAIVE = True
 VERIFY_ATOL = 1e-9
 
@@ -98,11 +114,11 @@ def load_54():
     return mod
 
 
-def _read_gao25(token):
+def _read_gao25(token, layer=None):
     """One gao25 eRegulon table, reshaped to 40/41's four columns.
 
-    Lifted from 42:161-165 unchanged, including its union of direct and extended targets --
-    see the module docstring on why that difference from 40 is preserved rather than fixed.
+    Regulon identity follows 42:161-165; the direct-over-extended resolution follows
+    40.build_layer_table, so a regulon name means the same thing in the 54 and 55 families.
     """
     path = INPUT_REGULON_TMPL.format(token=token)
     assert os.path.exists(path), f'missing gao25 regulon table {path}'
@@ -110,12 +126,32 @@ def _read_gao25(token):
     reg['regulation_direction'] = reg['TF2G_sign'] + '/' + reg['R2G_sign']
     reg = reg[reg['regulation_direction'].isin(KEEP_DIRECTIONS)].copy()
     reg['regulon'] = reg['TF'] + '_' + reg['regulation_direction']
+    reg['source'] = np.where(reg['is_extended'], 'extended', 'direct')
+
+    # `is_extended` and the eRegulon_name tag must agree, or the source column is meaningless
+    from_name = np.where(reg['eRegulon_name'].str.contains('_extended_', regex=False),
+                         'extended', 'direct')
+    assert (reg['source'].values == from_name).all(), \
+        f'{path}: is_extended disagrees with the eRegulon_name direct/extended tag'
+
+    direct_keys = set(reg.loc[reg['source'] == 'direct', 'regulon'])
+    dual = sorted(direct_keys & set(reg.loc[reg['source'] == 'extended', 'regulon']))
+    if layer is not None:
+        DUAL_FORM[layer] = dual
+    if PREFER_DIRECT:
+        # keep all direct rows; from extended keep only regulons absent from direct (40's rule)
+        reg = reg[(reg['source'] == 'direct') | ~reg['regulon'].isin(direct_keys)]
+    n_d = reg.loc[reg['source'] == 'direct', 'regulon'].nunique()
+    n_e = reg.loc[reg['source'] == 'extended', 'regulon'].nunique()
+    print(f'    gao25 {token}: {n_d} direct + {n_e} extended regulons, '
+          f'{len(dual)} present in both forms'
+          f'{" (direct kept)" if dual and PREFER_DIRECT else ""}')
     return reg.drop_duplicates(subset=['regulon', 'Gene'])
 
 
 def load_regulons_gao25(cfg):
     """54.build_layer's regulon hook: this layer's gao25 catalogue."""
-    return _read_gao25(LAYER_TOKEN[cfg['layer']])
+    return _read_gao25(LAYER_TOKEN[cfg['layer']], layer=cfg['layer'])
 
 
 def verify_against_naive(m54):
@@ -136,6 +172,15 @@ def verify_against_naive(m54):
         mine = pd.read_csv(OUT_LONG_TMPL.format(layer=layer), sep='\t')
         mine = mine.set_index(['archetype', 'regulon'])
 
+        # 42-45 union direct and extended; PREFER_DIRECT drops the extended half for keys that
+        # have both, so only those keys may legitimately differ. None do at present.
+        dual = set(DUAL_FORM.get(layer, []))
+        if dual:
+            print(f'  {layer:5s}: {len(dual)} dual-form regulons excluded from the strict '
+                  f'comparison (PREFER_DIRECT changed their targets): {sorted(dual)[:5]}')
+            naive = naive[~naive.index.get_level_values('regulon').isin(dual)]
+            mine = mine[~mine.index.get_level_values('regulon').isin(dual)]
+
         assert set(naive.index) == set(mine.index), \
             (f'{layer}: pair sets differ -- naive has {len(set(naive.index) - set(mine.index))} '
              f'pairs 55 lacks, 55 has {len(set(mine.index) - set(naive.index))} the naive lacks')
@@ -148,7 +193,9 @@ def verify_against_naive(m54):
               f'max |delta log2_or| = {d:.3g}')
         assert d <= VERIFY_ATOL, \
             f'{layer}: log2_or diverged from {naive_path} by {d:.3g} (> {VERIFY_ATOL})'
-    print(f'  PASS -- worst |delta log2_or| across all four layers: {worst:.3g}')
+    n_dual = sum(len(v) for v in DUAL_FORM.values())
+    print(f'  PASS -- worst |delta log2_or| across all four layers: {worst:.3g} '
+          f'({n_dual} dual-form regulons excluded)')
 
 
 def main():
