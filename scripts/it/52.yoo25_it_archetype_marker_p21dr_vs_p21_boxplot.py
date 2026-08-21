@@ -17,8 +17,10 @@ One box per (subclass, archetype), 11 in total, laid out left-to-right in lamina
 This is the diagonal of a (marker-set x archetype) grid -- not full columns. Box sizes are
 therefore deliberately unequal (they are the per-archetype marker counts: 55..206).
 
-Two lower barplot panels decompose each box into the count of genes significantly moved by
-dark-rearing (FDR < FDR_THRESH AND |log2FC| > t), up drawn above zero and down below. Their bars
+Two lower barplot panels decompose each box into the FRACTION of that archetype's marker set
+significantly moved by dark-rearing (FDR < FDR_THRESH AND |log2FC| > t), up drawn above zero and
+down below, with the raw count/set-size printed on each bar in small text. Fractions rather than
+counts so the 55-gene and 206-gene marker sets are directly comparable. The genes behind the bars
 are a strict subset of the points in the box directly above -- same genes, same cells, same fold
 changes. One panel per threshold in LOG2FC_PANELS: t=1.0 isolates the few large movers (mostly
 0-5 per archetype, so relative bar heights there are noise-dominated and should be read as
@@ -364,33 +366,40 @@ def main():
                  f'(Yoo25 mouse IT; top {N_TOP_CELLS} purest cells per age x archetype)',
                  fontsize=11)
 
-    # ---- one count panel per threshold: up above zero, down below ----
+    # ---- one panel per threshold: fraction of the marker set, up above zero, down below ----
+    # Bars are fractions, not counts, so archetypes with 55 and 206 markers are comparable;
+    # the raw numerator/denominator is kept as small text on each bar.
     x = np.arange(1, npos + 1)
+    n_mk = boxes['n'].values.astype(int)
     for pi, (ax_b, t) in enumerate(zip(bar_axes, LOG2FC_PANELS)):
         n_up = boxes[f'up{t:g}'].values.astype(int)
         n_dn = boxes[f'down{t:g}'].values.astype(int)
-        ax_b.bar(x, n_up, width=0.6, color=COLOR_UP, alpha=0.85,
+        f_up = n_up / n_mk
+        f_dn = n_dn / n_mk
+        ax_b.bar(x, f_up, width=0.6, color=COLOR_UP, alpha=0.85,
                  label=f'up (log2FC > {t:g})')
-        ax_b.bar(x, -n_dn, width=0.6, color=COLOR_DN, alpha=0.85,
+        ax_b.bar(x, -f_dn, width=0.6, color=COLOR_DN, alpha=0.85,
                  label=f'down (log2FC < -{t:g})')
         ax_b.axhline(0.0, color='black', linewidth=0.8)
         for xi in range(npos):
             if n_up[xi]:
-                ax_b.text(x[xi], n_up[xi], str(n_up[xi]), ha='center', va='bottom', fontsize=7)
+                ax_b.text(x[xi], f_up[xi], f'{n_up[xi]}/{n_mk[xi]}',
+                          ha='center', va='bottom', fontsize=6)
             if n_dn[xi]:
-                ax_b.text(x[xi], -n_dn[xi], str(n_dn[xi]), ha='center', va='top', fontsize=7)
-        ax_b.set_ylabel('significant genes', fontsize=10)
+                ax_b.text(x[xi], -f_dn[xi], f'{n_dn[xi]}/{n_mk[xi]}',
+                          ha='center', va='top', fontsize=6)
+        ax_b.set_ylabel('fraction of marker set', fontsize=10)
         ax_b.spines['top'].set_visible(False)
         ax_b.spines['right'].set_visible(False)
         # legend top-right: tallest bars are down bars on the left, so this stays clear of them
         ax_b.legend(frameon=False, fontsize=8, loc='upper right', ncol=2)
-        # symmetric limits, with headroom for the count labels and the legend
-        lim = max(int(max(n_up.max(), n_dn.max())), 1) * 1.55
+        # symmetric limits, with headroom for the fraction labels and the legend
+        lim = max(float(max(f_up.max(), f_dn.max())), 1e-3) * 1.55
         ax_b.set_ylim(-lim, lim)
-        # y ticks as positive counts on both sides (sign encodes direction, not a negative count)
+        # y ticks as positive fractions on both sides (sign encodes direction, not a negative)
         yt = [v for v in ax_b.get_yticks() if -lim <= v <= lim]
         ax_b.set_yticks(yt)
-        ax_b.set_yticklabels([f'{abs(int(v))}' for v in yt], fontsize=9)
+        ax_b.set_yticklabels([f'{abs(v):g}' for v in yt], fontsize=9)
         ax_b.set_ylim(-lim, lim)
         ax_b.text(0.005, 0.97, f'FDR<{FDR_THRESH:g}, |log2FC|>{t:g}', transform=ax_b.transAxes,
                   fontsize=8, va='top', ha='left', color='0.35')
