@@ -1,10 +1,10 @@
-"""41f's two panels as a dot matrix, sized by marker-set coverage (PDF).
+"""54b's two panels as a dot matrix, sized by marker-set coverage (PDF).
 
-41g renders 41f's heatmap as a PDF, in which colour (log2 enrichment) is the only encoded
+54c renders 54b's heatmap as a PDF, in which colour (log2 enrichment) is the only encoded
 quantity. This script draws the same two panels as dots and adds a second channel, exactly as
 41d does one step earlier in the family:
 
-  colour = log2_enr                    (as in 41f/41g, same [COLOR_MIN, COLOR_MAX] and ramp)
+  colour = log2_enr                    (as in 54b/54c, same [COLOR_MIN, COLOR_MAX] and ramp)
   area   = overlap / n_markers         (what fraction of the archetype's marker set the
                                         regulon's targets cover)
 
@@ -15,23 +15,23 @@ accounts for. A dot that is dark *and* large is a regulon that both concentrates
 archetype and explains a real share of it.
 
 Difference from 41d, and the reason this script exists rather than a flag on 41d: 41d's colour
-is 41's Fisher log2 odds ratio, which carries two systematic inflations (see 41e). Here colour
+is 41's Fisher log2 odds ratio, which carries two systematic inflations (see 54). Here colour
 is the expression-stratified log2 enrichment, so the ramp runs below zero -- a dot can now be
 blue, meaning the regulon covers FEWER of the archetype's markers than an expression-matched
 gene set would, which 41d's zero-floored scale could not express. 41d also drew only the
-native panel; this keeps both, as 41f/41g do.
+native panel; this keeps both, as 54b/54c do.
 
-Rows, columns, statistics, ramp and the mask/significance rules are imported from 41f/41b so
+Rows, columns, statistics, ramp and the mask/significance rules are imported from 54b/41b so
 this figure cannot disagree with them: gray fill = overlap < MASK_MIN_OVERLAP (too few shared
 genes to trust), black outline = the star criterion, nothing drawn where the regulon does not
 exist in that subclass.
 
 Reads:
-  local_data/res/it/41e.<layer>_stratified_enrichment.tsv    (panel 1, via 41f.load_native)
-  local_data/res/it/41e.l23set_stratified_enrichment.tsv     (panel 2)
-  local_data/res/it/41f.enriched_regulon_selection.tsv       (row set + row order)
+  local_data/res/it/54.<layer>_stratified_enrichment.tsv    (panel 1, via 54b.load_native)
+  local_data/res/it/54.l23set_stratified_enrichment.tsv     (panel 2)
+  local_data/res/it/54b.enriched_regulon_selection.tsv       (row set + row order)
 Outputs:
-  local_data/fig/it/41h.stratified_enriched_regulon_dotplot.pdf
+  local_data/fig/it/54d.stratified_enriched_regulon_dotplot.pdf
 """
 
 import os
@@ -57,10 +57,10 @@ RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
 
 SCRIPT_41B = os.path.join(SCRIPTS_DIR, 'it', '41b.selected_regulon_archetype_enrichment.py')
-SCRIPT_41F = os.path.join(SCRIPTS_DIR, 'it', '41f.stratified_enriched_regulon_heatmap.py')
-SCRIPT_41G = os.path.join(SCRIPTS_DIR, 'it', '41g.stratified_enriched_regulon_heatmap_pdf.py')
-INPUT_SELECTION = os.path.join(RES_DIR, '41f.enriched_regulon_selection.tsv')
-OUT_PDF = os.path.join(FIG_DIR, '41h.stratified_enriched_regulon_dotplot.pdf')
+SCRIPT_54B = os.path.join(SCRIPTS_DIR, 'it', '54b.stratified_enriched_regulon_heatmap.py')
+SCRIPT_54C = os.path.join(SCRIPTS_DIR, 'it', '54c.stratified_enriched_regulon_heatmap_pdf.py')
+INPUT_SELECTION = os.path.join(RES_DIR, '54b.enriched_regulon_selection.tsv')
+OUT_PDF = os.path.join(FIG_DIR, '54d.stratified_enriched_regulon_dotplot.pdf')
 
 # area encoding: a dot at FRAC_REF covers SIZE_REF points^2, area scaling linearly with the
 # fraction so twice the area reads as twice the coverage. FRAC_REF sits just above the
@@ -69,7 +69,7 @@ FRAC_REF = 0.40
 SIZE_REF = 260.0
 SIZE_LEGEND = [0.05, 0.15, 0.25, 0.35]
 BOX_LW = 1.4             # outline width for significant cells
-CELL_W, CELL_H = 0.50, 0.21      # inches per matrix cell, matching 41g
+CELL_W, CELL_H = 0.50, 0.21      # inches per matrix cell, matching 54c
 
 os.makedirs(FIG_DIR, exist_ok=True)
 
@@ -81,15 +81,15 @@ def load_module(path, name):
     return mod
 
 
-def draw_panel(ax, mats, rows, cols, primed, m41b, m41f, cmap, norm):
+def draw_panel(ax, mats, rows, cols, primed, m41b, m54b, cmap, norm):
     """One dot panel; returns the colour mappable for the shared colorbar."""
     log2 = mats['log2_enr'].values
     overlap = mats['overlap'].values
     n_markers = mats['n_markers'].values
     tested = np.isfinite(log2)
     thin = tested & (overlap < m41b.MASK_MIN_OVERLAP)
-    sig = (tested & (mats['fdr_strat'].values < m41f.STAR_FDR)
-           & (log2 > m41f.STAR_LOG2ENR) & (overlap >= m41b.MASK_MIN_OVERLAP))
+    sig = (tested & (mats['fdr_strat'].values < m54b.STAR_FDR)
+           & (log2 > m54b.STAR_LOG2ENR) & (overlap >= m41b.MASK_MIN_OVERLAP))
 
     frac = np.divide(overlap, n_markers, out=np.full_like(log2, np.nan), where=tested)
     assert np.nanmax(frac) <= FRAC_REF + 1e-9, \
@@ -131,37 +131,37 @@ def draw_panel(ax, mats, rows, cols, primed, m41b, m41f, cmap, norm):
 
 def main():
     m41b = load_module(SCRIPT_41B, 'script41b')
-    m41f = load_module(SCRIPT_41F, 'script41f')
-    m41g = load_module(SCRIPT_41G, 'script41g')   # for the plotly -> matplotlib ramp
+    m54b = load_module(SCRIPT_54B, 'script54b')
+    m54c = load_module(SCRIPT_54C, 'script54c')   # for the plotly -> matplotlib ramp
 
     primed = m41b.load_primed_labels()
     cols = m41b.column_keys(primed)
 
-    native = m41f.load_native(primed, m41b)
-    assert os.path.exists(m41f.INPUT_L23SET), f'missing {m41f.INPUT_L23SET}; run 41e first'
-    l23set = m41b.to_col(pd.read_csv(m41f.INPUT_L23SET, sep='\t'), primed)
+    native = m54b.load_native(primed, m41b)
+    assert os.path.exists(m54b.INPUT_L23SET), f'missing {m54b.INPUT_L23SET}; run 54 first'
+    l23set = m41b.to_col(pd.read_csv(m54b.INPUT_L23SET, sep='\t'), primed)
     native = native[native['regulation_direction'] == m41b.SIGN]
     l23set = l23set[l23set['regulation_direction'] == m41b.SIGN]
 
     assert os.path.exists(INPUT_SELECTION), \
-        f'missing {INPUT_SELECTION}; run 41f.stratified_enriched_regulon_heatmap.py first'
+        f'missing {INPUT_SELECTION}; run 54b.stratified_enriched_regulon_heatmap.py first'
     rows = list(pd.read_csv(INPUT_SELECTION, sep='\t')['TF'])
     print(f'  {len(rows)} regulons x {len(cols)} subclass-archetype columns, 2 panels')
 
     panels = [("each subclass's own regulons",
-               m41f.to_matrices(native, rows, cols, m41b.SIGN)),
+               m54b.to_matrices(native, rows, cols, m41b.SIGN)),
               ('L2/3 regulons applied to every subclass',
-               m41f.to_matrices(l23set, rows, cols, m41b.SIGN))]
+               m54b.to_matrices(l23set, rows, cols, m41b.SIGN))]
 
-    cmap = m41g.plotly_to_mpl_cmap(m41f.build_colorscale())
-    norm = Normalize(vmin=m41f.COLOR_MIN, vmax=m41f.COLOR_MAX)
+    cmap = m54c.plotly_to_mpl_cmap(m54b.build_colorscale())
+    norm = Normalize(vmin=m54b.COLOR_MIN, vmax=m54b.COLOR_MAX)
 
     fig, axes = plt.subplots(
         len(panels), 1, layout='constrained',
         figsize=(CELL_W * len(cols) + 4.6, len(panels) * (CELL_H * len(rows) + 1.1) + 1.2))
     axes = np.atleast_1d(axes)
     for ax, (title, mats) in zip(axes, panels):
-        mappable = draw_panel(ax, mats, rows, cols, primed, m41b, m41f, cmap, norm)
+        mappable = draw_panel(ax, mats, rows, cols, primed, m41b, m54b, cmap, norm)
         ax.set_title(title, fontsize=10, pad=8)
         tested = np.isfinite(mats['log2_enr'].values)
         thin = int((tested & (mats['overlap'].values < m41b.MASK_MIN_OVERLAP)).sum())
@@ -192,7 +192,7 @@ def main():
         f'All enriched regulons ({m41b.SIGN}) — archetype marker enrichment across mouse IT '
         f'subclasses (expression-stratified)\n'
         f'colour = log2 enrichment, area = fraction of the archetype marker set covered; '
-        f'outlined = FDR<{m41f.STAR_FDR:g}, log2 enr>{m41f.STAR_LOG2ENR:g}, '
+        f'outlined = FDR<{m54b.STAR_FDR:g}, log2 enr>{m54b.STAR_LOG2ENR:g}, '
         f'overlap>={m41b.MASK_MIN_OVERLAP}\n'
         f'gray = overlap<{m41b.MASK_MIN_OVERLAP}, too few shared genes to trust; '
         f'blue = below the matched expectation',

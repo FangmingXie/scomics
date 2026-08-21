@@ -100,7 +100,7 @@ def reconstruct_gene_universe(coords_index, subclass_val, adatas):
     `adatas` maps tag -> full AnnData (loaded once); this subsets to `subclass_val`.
 
     Returns (universe, stats) where `stats` is a DataFrame indexed by the universe genes
-    with per-gene `mean` / `var` / `detect` over the same cells. 41e stratifies the universe on
+    with per-gene `mean` / `var` / `detect` over the same cells. 54 stratifies the universe on
     `mean`, so the statistics must come from this matrix rather than be recomputed.
     """
     subs = {}

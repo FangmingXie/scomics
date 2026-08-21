@@ -1,16 +1,16 @@
-"""41f's two-panel heatmap as a vector PDF, for figure assembly.
+"""54b's two-panel heatmap as a vector PDF, for figure assembly.
 
-41f draws the expression-stratified enrichment heatmap through plotly, which is interactive
+54b draws the expression-stratified enrichment heatmap through plotly, which is interactive
 but only exports HTML. This script renders the same two panels through matplotlib so the
 result drops into a figure: vector quads and real text objects. The colorbar stays a
 raster image, as matplotlib draws it by default -- it carries no text or geometry that
 needs editing.
 
 Nothing is recomputed and nothing is re-decided. Rows, columns, the statistic, the star
-criterion, the mask rule and the colour ramp are all imported from 41f/41b, so this figure
+criterion, the mask rule and the colour ramp are all imported from 54b/41b, so this figure
 cannot disagree with the HTML one:
 
-  colour  = log2_enr          (41f.COLOR_MIN .. 41f.COLOR_MAX, 41f.build_colorscale)
+  colour  = log2_enr          (54b.COLOR_MIN .. 54b.COLOR_MAX, 54b.build_colorscale)
   label   = overlap gene count
   gray    = overlap < MASK_MIN_OVERLAP     (too few shared genes to trust)
   outline = FDR < STAR_FDR AND log2_enr > STAR_LOG2ENR AND overlap >= MASK_MIN_OVERLAP
@@ -18,15 +18,15 @@ cannot disagree with the HTML one:
 
 Relation to 41d: 41d is the same idea one step earlier in the family -- a matplotlib PDF of
 41c's *first* panel, drawn as a dot plot so area could carry marker-set coverage. This one
-keeps the heatmap form, because the point of 41f is the colour scale rather than a second
+keeps the heatmap form, because the point of 54b is the colour scale rather than a second
 channel, and it keeps both panels.
 
 Reads:
-  local_data/res/it/41e.<layer>_stratified_enrichment.tsv    (panel 1, via 41f.load_native)
-  local_data/res/it/41e.l23set_stratified_enrichment.tsv     (panel 2)
-  local_data/res/it/41f.enriched_regulon_selection.tsv       (row set + row order)
+  local_data/res/it/54.<layer>_stratified_enrichment.tsv    (panel 1, via 54b.load_native)
+  local_data/res/it/54.l23set_stratified_enrichment.tsv     (panel 2)
+  local_data/res/it/54b.enriched_regulon_selection.tsv       (row set + row order)
 Outputs:
-  local_data/fig/it/41g.stratified_enriched_regulon_heatmap.pdf
+  local_data/fig/it/54c.stratified_enriched_regulon_heatmap.pdf
 """
 
 import os
@@ -53,9 +53,9 @@ RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
 
 SCRIPT_41B = os.path.join(SCRIPTS_DIR, 'it', '41b.selected_regulon_archetype_enrichment.py')
-SCRIPT_41F = os.path.join(SCRIPTS_DIR, 'it', '41f.stratified_enriched_regulon_heatmap.py')
-INPUT_SELECTION = os.path.join(RES_DIR, '41f.enriched_regulon_selection.tsv')
-OUT_PDF = os.path.join(FIG_DIR, '41g.stratified_enriched_regulon_heatmap.pdf')
+SCRIPT_54B = os.path.join(SCRIPTS_DIR, 'it', '54b.stratified_enriched_regulon_heatmap.py')
+INPUT_SELECTION = os.path.join(RES_DIR, '54b.enriched_regulon_selection.tsv')
+OUT_PDF = os.path.join(FIG_DIR, '54c.stratified_enriched_regulon_heatmap.pdf')
 
 CELL_W, CELL_H = 0.50, 0.21      # inches per heatmap cell
 GAP_LW = 0.6                     # white rule between cells (plotly's xgap/ygap)
@@ -73,9 +73,9 @@ def load_module(path, name):
 
 
 def plotly_to_mpl_cmap(scale):
-    """41f's plotly colorscale as a matplotlib colormap, break at zero preserved.
+    """54b's plotly colorscale as a matplotlib colormap, break at zero preserved.
 
-    41f's scale repeats a position (the hard step at log2_enr = 0). matplotlib requires
+    54b's scale repeats a position (the hard step at log2_enr = 0). matplotlib requires
     strictly increasing stops, so the duplicate is nudged by one part in a million -- visually
     the same discontinuity, and it keeps the two figures on the same colours.
     """
@@ -90,14 +90,14 @@ def plotly_to_mpl_cmap(scale):
     return LinearSegmentedColormap.from_list('log2enr', stops)
 
 
-def draw_panel(ax, mats, rows, cols, primed, m41b, m41f, cmap, norm):
+def draw_panel(ax, mats, rows, cols, primed, m41b, m54b, cmap, norm):
     """One heatmap panel; returns the mappable so the shared colorbar can use it."""
     log2 = mats['log2_enr'].values
     overlap = mats['overlap'].values
     tested = np.isfinite(log2)
     thin = tested & (overlap < m41b.MASK_MIN_OVERLAP)
-    sig = (tested & (mats['fdr_strat'].values < m41f.STAR_FDR)
-           & (log2 > m41f.STAR_LOG2ENR) & (overlap >= m41b.MASK_MIN_OVERLAP))
+    sig = (tested & (mats['fdr_strat'].values < m54b.STAR_FDR)
+           & (log2 > m54b.STAR_LOG2ENR) & (overlap >= m41b.MASK_MIN_OVERLAP))
 
     x = np.arange(len(cols) + 1)
     y = np.arange(len(rows) + 1)
@@ -135,30 +135,30 @@ def draw_panel(ax, mats, rows, cols, primed, m41b, m41f, cmap, norm):
 
 def main():
     m41b = load_module(SCRIPT_41B, 'script41b')
-    m41f = load_module(SCRIPT_41F, 'script41f')
+    m54b = load_module(SCRIPT_54B, 'script54b')
 
     primed = m41b.load_primed_labels()
     cols = m41b.column_keys(primed)
 
-    native = m41f.load_native(primed, m41b)
-    assert os.path.exists(m41f.INPUT_L23SET), \
-        f'missing {m41f.INPUT_L23SET}; run 41e first'
-    l23set = m41b.to_col(pd.read_csv(m41f.INPUT_L23SET, sep='\t'), primed)
+    native = m54b.load_native(primed, m41b)
+    assert os.path.exists(m54b.INPUT_L23SET), \
+        f'missing {m54b.INPUT_L23SET}; run 54 first'
+    l23set = m41b.to_col(pd.read_csv(m54b.INPUT_L23SET, sep='\t'), primed)
     native = native[native['regulation_direction'] == m41b.SIGN]
     l23set = l23set[l23set['regulation_direction'] == m41b.SIGN]
 
     assert os.path.exists(INPUT_SELECTION), \
-        f'missing {INPUT_SELECTION}; run 41f.stratified_enriched_regulon_heatmap.py first'
+        f'missing {INPUT_SELECTION}; run 54b.stratified_enriched_regulon_heatmap.py first'
     rows = list(pd.read_csv(INPUT_SELECTION, sep='\t')['TF'])
     print(f'  {len(rows)} regulons x {len(cols)} subclass-archetype columns, 2 panels')
 
     panels = [("each subclass's own regulons",
-               m41f.to_matrices(native, rows, cols, m41b.SIGN)),
+               m54b.to_matrices(native, rows, cols, m41b.SIGN)),
               ('L2/3 regulons applied to every subclass',
-               m41f.to_matrices(l23set, rows, cols, m41b.SIGN))]
+               m54b.to_matrices(l23set, rows, cols, m41b.SIGN))]
 
-    cmap = plotly_to_mpl_cmap(m41f.build_colorscale())
-    norm = Normalize(vmin=m41f.COLOR_MIN, vmax=m41f.COLOR_MAX)
+    cmap = plotly_to_mpl_cmap(m54b.build_colorscale())
+    norm = Normalize(vmin=m54b.COLOR_MIN, vmax=m54b.COLOR_MAX)
 
     # constrained layout so the suptitle, the two panel titles and the shared colorbar are
     # packed against the axes instead of against fixed fractions of a tall figure
@@ -166,7 +166,7 @@ def main():
         len(panels), 1, layout='constrained',
         figsize=(CELL_W * len(cols) + 3.4, len(panels) * (CELL_H * len(rows) + 1.1) + 1.2))
     for ax, (title, mats) in zip(np.atleast_1d(axes), panels):
-        mesh = draw_panel(ax, mats, rows, cols, primed, m41b, m41f, cmap, norm)
+        mesh = draw_panel(ax, mats, rows, cols, primed, m41b, m54b, cmap, norm)
         ax.set_title(title, fontsize=10, pad=8)
         tested = int(np.isfinite(mats['log2_enr'].values).sum())
         thin = int(((mats['overlap'].values < m41b.MASK_MIN_OVERLAP)
@@ -184,7 +184,7 @@ def main():
         f'All enriched regulons ({m41b.SIGN}) — archetype marker enrichment across mouse IT '
         f'subclasses (expression-stratified)\n'
         f'rows = regulons starred in >=1 cell, grouped by peak column; cell label = overlap '
-        f'gene count; outlined = FDR<{m41f.STAR_FDR:g}, log2 enr>{m41f.STAR_LOG2ENR:g}, '
+        f'gene count; outlined = FDR<{m54b.STAR_FDR:g}, log2 enr>{m54b.STAR_LOG2ENR:g}, '
         f'overlap>={m41b.MASK_MIN_OVERLAP}\n'
         f'gray = overlap<{m41b.MASK_MIN_OVERLAP}, too few shared genes to trust; '
         f'blue = below the matched expectation',

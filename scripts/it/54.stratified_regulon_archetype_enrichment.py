@@ -45,11 +45,11 @@ Reads (per layer, unchanged from 41):
   links/it/superdupermegaRNA_cheng22_IT_P28NR.h5ad
   links/it/superdupermegaRNA_yoo25_IT_P21.h5ad
 Outputs:
-  local_data/res/it/41e.<layer>_stratified_enrichment.tsv     (panel 1: native regulons)
-  local_data/res/it/41e.l23set_stratified_enrichment.tsv      (panel 2: L2/3 set everywhere)
-  local_data/res/it/41e.validation_universe_robustness.tsv
-  local_data/res/it/41e.validation_bin_sensitivity.tsv
-  local_data/fig/it/41e.log2or_vs_log2enr.pdf
+  local_data/res/it/54.<layer>_stratified_enrichment.tsv     (panel 1: native regulons)
+  local_data/res/it/54.l23set_stratified_enrichment.tsv      (panel 2: L2/3 set everywhere)
+  local_data/res/it/54.validation_universe_robustness.tsv
+  local_data/res/it/54.validation_bin_sensitivity.tsv
+  local_data/fig/it/54.log2or_vs_log2enr.pdf
 """
 
 import os
@@ -77,11 +77,11 @@ FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
 
 SCRIPT_41 = os.path.join(SCRIPTS_DIR, 'it', '41.regulon_archetype_enrichment.py')
 INPUT_L23_REGULONS = os.path.join(RES_DIR, '40.yoo25_L2_3_regulon_targets.tsv')
-OUT_LONG_TMPL = os.path.join(RES_DIR, '41e.{layer}_stratified_enrichment.tsv')
-OUT_L23SET = os.path.join(RES_DIR, '41e.l23set_stratified_enrichment.tsv')
-OUT_ROBUSTNESS = os.path.join(RES_DIR, '41e.validation_universe_robustness.tsv')
-OUT_BIN_SENS = os.path.join(RES_DIR, '41e.validation_bin_sensitivity.tsv')
-OUT_PDF = os.path.join(FIG_DIR, '41e.log2or_vs_log2enr.pdf')
+OUT_LONG_TMPL = os.path.join(RES_DIR, '54.{layer}_stratified_enrichment.tsv')
+OUT_L23SET = os.path.join(RES_DIR, '54.l23set_stratified_enrichment.tsv')
+OUT_ROBUSTNESS = os.path.join(RES_DIR, '54.validation_universe_robustness.tsv')
+OUT_BIN_SENS = os.path.join(RES_DIR, '54.validation_bin_sensitivity.tsv')
+OUT_PDF = os.path.join(FIG_DIR, '54.log2or_vs_log2enr.pdf')
 
 # 20 quantile strata of mean log2-CP10k expression. Both choices are non-critical: over all
 # 417 L2/3 pairs the median log2(obs/exp) is -0.205 / -0.226 / -0.238 at 10 / 20 / 40 bins
@@ -99,7 +99,7 @@ MC_CHECK_DRAWS = 20000
 MC_CHECK_RTOL_MEAN = 0.05
 MC_CHECK_RTOL_TAIL = 0.10
 # mirrors 41b.MASK_MIN_OVERLAP -- the shared-gene floor below which 41b/41d gray a cell out.
-# Defined here rather than imported so 41e does not pull plotly in through 41b; the two must
+# Defined here rather than imported so 54 does not pull plotly in through 41b; the two must
 # be kept in step, which is why the comparison figure labels it explicitly.
 MASK_MIN_OVERLAP = 5
 
@@ -431,7 +431,7 @@ def plot_comparison(longs):
         ax.tick_params(labelsize=8)
         for spine in ax.spines.values():
             spine.set_edgecolor('0.6')
-    axes[0].set_ylabel('41e  log2 enrichment\n(expression-stratified)', fontsize=9)
+    axes[0].set_ylabel('54  log2 enrichment\n(expression-stratified)', fontsize=9)
     cbar = fig.colorbar(sc, ax=axes, fraction=0.018, pad=0.01, aspect=26)
     cbar.set_label('overlap (genes)', fontsize=9)
     cbar.ax.tick_params(labelsize=8)

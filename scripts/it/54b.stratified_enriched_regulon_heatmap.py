@@ -1,7 +1,7 @@
-"""41c's figure, redrawn on 41e's expression-stratified statistics.
+"""41c's figure, redrawn on 54's expression-stratified statistics.
 
 41c selects and colours every enriched regulon by 41's Fisher log2 odds ratio. That statistic
-carries two systematic inflations (see 41e): the single-stratum null ignores that markers and
+carries two systematic inflations (see 54): the single-stratum null ignores that markers and
 regulon targets are both biased toward highly expressed genes, and the Haldane-Anscombe odds
 ratio overstates the enrichment ratio at small counts. On the cells this figure actually
 colours (overlap >= MASK_MIN_OVERLAP) the median moves
@@ -10,10 +10,10 @@ colours (overlap >= MASK_MIN_OVERLAP) the median moves
 
 This script keeps 41c's design exactly -- same columns, same two panels, same masking, same
 row-selection logic, same drawing code where it can be shared -- and changes only the
-statistic: colour is 41e's `log2_enr` (log2 of observed overlap over the expression-matched
+statistic: colour is 54's `log2_enr` (log2 of observed overlap over the expression-matched
 expectation) and significance is `fdr_strat` (BH over the exact stratified mid-p).
 
-Nothing is recomputed here. Both panels are reshaped from the tables 41e wrote.
+Nothing is recomputed here. Both panels are reshaped from the tables 54 wrote.
 
 ONE VISUAL DEPARTURE FROM 41c, forced by the data: its colour ramp is sequential and floored
 at zero, which 41b justifies by noting that after masking, every remaining cell is enriched.
@@ -24,18 +24,18 @@ below zero; 41b's YlOrRd is kept unchanged above it, so enriched cells look as t
 
 THRESHOLDS ARE NOT INHERITED FROM 41b. `log2_enr` lives on a different scale from `log2_or`
 (max 3.46 vs 6.4 over the activating cells), so 41b's STAR_LOG2OR = 3.0 and its [0, 6.5] ramp
-are meaningless here and are re-derived below. They are provisional: 41e's plan leaves the
+are meaningless here and are re-derived below. They are provisional: 54's plan leaves the
 final cutoffs to be agreed rather than assumed, and this figure is the artefact that decision
 should be made from.
 
 Reads:
-  local_data/res/it/41e.<layer>_stratified_enrichment.tsv    (panel 1, native regulons)
-  local_data/res/it/41e.l23set_stratified_enrichment.tsv     (panel 2, L2/3 set everywhere)
+  local_data/res/it/54.<layer>_stratified_enrichment.tsv    (panel 1, native regulons)
+  local_data/res/it/54.l23set_stratified_enrichment.tsv     (panel 2, L2/3 set everywhere)
 Outputs:
-  local_data/res/it/41f.enriched_regulon_selection.tsv       (chosen regulons + peak cell)
-  local_data/res/it/41f.enriched_native_log2enr.tsv / _fdr.tsv
-  local_data/res/it/41f.enriched_l23set_log2enr.tsv / _fdr.tsv
-  local_data/fig/it/41f.stratified_enriched_regulon_heatmap.html
+  local_data/res/it/54b.enriched_regulon_selection.tsv       (chosen regulons + peak cell)
+  local_data/res/it/54b.enriched_native_log2enr.tsv / _fdr.tsv
+  local_data/res/it/54b.enriched_l23set_log2enr.tsv / _fdr.tsv
+  local_data/fig/it/54b.stratified_enriched_regulon_heatmap.html
 """
 
 import os
@@ -57,15 +57,15 @@ RES_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it')
 FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
 
 SCRIPT_41B = os.path.join(SCRIPTS_DIR, 'it', '41b.selected_regulon_archetype_enrichment.py')
-INPUT_NATIVE_TMPL = os.path.join(RES_DIR, '41e.{layer}_stratified_enrichment.tsv')
-INPUT_L23SET = os.path.join(RES_DIR, '41e.l23set_stratified_enrichment.tsv')
+INPUT_NATIVE_TMPL = os.path.join(RES_DIR, '54.{layer}_stratified_enrichment.tsv')
+INPUT_L23SET = os.path.join(RES_DIR, '54.l23set_stratified_enrichment.tsv')
 
-OUT_SELECTION = os.path.join(RES_DIR, '41f.enriched_regulon_selection.tsv')
-OUT_NATIVE = {'log2_enr': os.path.join(RES_DIR, '41f.enriched_native_log2enr.tsv'),
-              'fdr_strat': os.path.join(RES_DIR, '41f.enriched_native_fdr.tsv')}
-OUT_L23SET = {'log2_enr': os.path.join(RES_DIR, '41f.enriched_l23set_log2enr.tsv'),
-              'fdr_strat': os.path.join(RES_DIR, '41f.enriched_l23set_fdr.tsv')}
-OUT_HTML = os.path.join(FIG_DIR, '41f.stratified_enriched_regulon_heatmap.html')
+OUT_SELECTION = os.path.join(RES_DIR, '54b.enriched_regulon_selection.tsv')
+OUT_NATIVE = {'log2_enr': os.path.join(RES_DIR, '54b.enriched_native_log2enr.tsv'),
+              'fdr_strat': os.path.join(RES_DIR, '54b.enriched_native_fdr.tsv')}
+OUT_L23SET = {'log2_enr': os.path.join(RES_DIR, '54b.enriched_l23set_log2enr.tsv'),
+              'fdr_strat': os.path.join(RES_DIR, '54b.enriched_l23set_fdr.tsv')}
+OUT_HTML = os.path.join(FIG_DIR, '54b.stratified_enriched_regulon_heatmap.html')
 
 # --- the only constants that differ from 41b, and why ------------------------------------
 # BH-FDR over the stratified mid-p. Same 0.05 as 41b: the evidence bar is unchanged, only the
@@ -123,7 +123,7 @@ def load_native(primed, m41b):
     for layer, _token, _label in m41b.LAYER_TOKEN:
         path = INPUT_NATIVE_TMPL.format(layer=layer)
         assert os.path.exists(path), \
-            f'missing {path}; run 41e.stratified_regulon_archetype_enrichment.py first'
+            f'missing {path}; run 54.stratified_regulon_archetype_enrichment.py first'
         frames.append(pd.read_csv(path, sep='\t'))
     return m41b.to_col(pd.concat(frames, ignore_index=True), primed)
 
@@ -244,7 +244,7 @@ def main():
 
     native = load_native(primed, m41b)
     assert os.path.exists(INPUT_L23SET), \
-        f'missing {INPUT_L23SET}; run 41e.stratified_regulon_archetype_enrichment.py first'
+        f'missing {INPUT_L23SET}; run 54.stratified_regulon_archetype_enrichment.py first'
     l23set = m41b.to_col(pd.read_csv(INPUT_L23SET, sep='\t'), primed)
 
     native = native[native['regulation_direction'] == m41b.SIGN]
@@ -275,7 +275,7 @@ def main():
     fig.update_layout(
         title=f'All enriched regulons ({m41b.SIGN}) — archetype marker enrichment across mouse '
               f'IT subclasses (expression-stratified)<br>'
-              f'<sub>colour = log2(observed overlap / expression-matched expectation), 41e; '
+              f'<sub>colour = log2(observed overlap / expression-matched expectation), 54; '
               f'rows = regulons starred in >=1 cell, grouped by peak column; '
               f'cell label = overlap gene count; boxed = FDR<{STAR_FDR:g} AND '
               f'log2 enr>{STAR_LOG2ENR:g} AND overlap>={MASK_MIN_OVERLAP}; '
