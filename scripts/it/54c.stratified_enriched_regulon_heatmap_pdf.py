@@ -57,6 +57,18 @@ SCRIPT_54B = os.path.join(SCRIPTS_DIR, 'it', '54b.stratified_enriched_regulon_he
 INPUT_SELECTION = os.path.join(RES_DIR, '54b.enriched_regulon_selection.tsv')
 OUT_PDF = os.path.join(FIG_DIR, '54c.stratified_enriched_regulon_heatmap.pdf')
 
+# Everything that depends on WHICH regulon catalogue is being drawn lives here, so the 55x
+# entry point reuses this module instead of copying it. Thresholds and palette come from 54b
+# and are shared by both catalogues -- see the note beside CFG_YOO25 there.
+CFG_YOO25 = dict(
+    tag='yoo25',
+    label='mouse IT subclasses',
+    native_tmpl=os.path.join(RES_DIR, '54.{layer}_stratified_enrichment.tsv'),
+    l23set=os.path.join(RES_DIR, '54.l23set_stratified_enrichment.tsv'),
+    selection=INPUT_SELECTION,
+    out_pdf=OUT_PDF,
+)
+
 CELL_W, CELL_H = 0.50, 0.21      # inches per heatmap cell
 GAP_LW = 0.6                     # white rule between cells (plotly's xgap/ygap)
 BOX_LW = 1.6                     # outline width for significant cells
@@ -133,23 +145,23 @@ def draw_panel(ax, mats, rows, cols, primed, m41b, m54b, cmap, norm):
     return mesh
 
 
-def main():
+def main(cfg=CFG_YOO25):
     m41b = load_module(SCRIPT_41B, 'script41b')
     m54b = load_module(SCRIPT_54B, 'script54b')
 
     primed = m41b.load_primed_labels()
     cols = m41b.column_keys(primed)
 
-    native = m54b.load_native(primed, m41b)
-    assert os.path.exists(m54b.INPUT_L23SET), \
-        f'missing {m54b.INPUT_L23SET}; run 54 first'
-    l23set = m41b.to_col(pd.read_csv(m54b.INPUT_L23SET, sep='\t'), primed)
+    native = m54b.load_native(primed, m41b, cfg)
+    assert os.path.exists(cfg['l23set']), \
+        f'missing {cfg["l23set"]}; run the {cfg["tag"]} enrichment script first'
+    l23set = m41b.to_col(pd.read_csv(cfg['l23set'], sep='\t'), primed)
     native = native[native['regulation_direction'] == m41b.SIGN]
     l23set = l23set[l23set['regulation_direction'] == m41b.SIGN]
 
-    assert os.path.exists(INPUT_SELECTION), \
-        f'missing {INPUT_SELECTION}; run 54b.stratified_enriched_regulon_heatmap.py first'
-    rows = list(pd.read_csv(INPUT_SELECTION, sep='\t')['TF'])
+    assert os.path.exists(cfg['selection']), \
+        f'missing {cfg["selection"]}; run the {cfg["tag"]} heatmap script first'
+    rows = list(pd.read_csv(cfg['selection'], sep='\t')['TF'])
     print(f'  {len(rows)} regulons x {len(cols)} subclass-archetype columns, 2 panels')
 
     panels = [("each subclass's own regulons",
@@ -181,8 +193,8 @@ def main():
     cbar.ax.axhline(0.0, color='black', lw=0.8)     # the meaningful midpoint
 
     fig.suptitle(
-        f'All enriched regulons ({m41b.SIGN}) — archetype marker enrichment across mouse IT '
-        f'subclasses (expression-stratified)\n'
+        f'All enriched regulons ({m41b.SIGN}) — archetype marker enrichment across '
+        f'{cfg["label"]} (expression-stratified, {cfg["tag"]} regulons)\n'
         f'rows = regulons starred in >=1 cell, grouped by peak column; cell label = overlap '
         f'gene count; outlined = FDR<{m54b.STAR_FDR:g}, log2 enr>{m54b.STAR_LOG2ENR:g}, '
         f'overlap>={m41b.MASK_MIN_OVERLAP}\n'
@@ -190,9 +202,9 @@ def main():
         f'blue = below the matched expectation',
         fontsize=9)
 
-    fig.savefig(OUT_PDF, bbox_inches='tight')
+    fig.savefig(cfg['out_pdf'], bbox_inches='tight')
     plt.close(fig)
-    print(f'  Saved {OUT_PDF}')
+    print(f"  Saved {cfg['out_pdf']}")
 
 
 if __name__ == '__main__':

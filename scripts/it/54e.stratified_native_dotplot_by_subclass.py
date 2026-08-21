@@ -61,6 +61,19 @@ INPUT_SELECTION = os.path.join(RES_DIR, '54b.enriched_regulon_selection.tsv')
 OUT_ORDER = os.path.join(RES_DIR, '54e.clustered_row_order.tsv')
 OUT_PDF = os.path.join(FIG_DIR, '54e.stratified_native_dotplot_by_subclass.pdf')
 
+# Everything that depends on WHICH regulon catalogue is being drawn lives here, so the 55x
+# entry point reuses this module instead of copying it. Thresholds and palette come from 54b
+# and are shared by both catalogues -- see the note beside CFG_YOO25 there.
+CFG_YOO25 = dict(
+    tag='yoo25',
+    label='mouse IT subclasses',
+    native_tmpl=os.path.join(RES_DIR, '54.{layer}_stratified_enrichment.tsv'),
+    l23set=os.path.join(RES_DIR, '54.l23set_stratified_enrichment.tsv'),
+    selection=INPUT_SELECTION,
+    out_pdf=OUT_PDF,
+    out_order=OUT_ORDER,
+)
+
 # area encoding, as 54d: a dot at FRAC_REF covers SIZE_REF points^2, area linear in the
 # fraction. FRAC_REF sits just above the native panel's observed maximum (0.353).
 FRAC_REF = 0.40
@@ -162,19 +175,20 @@ def draw_panel(ax, mats, rows, letters, label, m41b, m54b, cmap, norm):
     return mappable
 
 
-def main():
+def main(cfg=CFG_YOO25):
     m41b = load_module(SCRIPT_41B, 'script41b')
     m54b = load_module(SCRIPT_54B, 'script54b')
     m54c = load_module(SCRIPT_54C, 'script54c')   # for the plotly -> matplotlib ramp
 
     primed = m41b.load_primed_labels()
-    native = m54b.load_native(primed, m41b)
+    native = m54b.load_native(primed, m41b, cfg)
     native = native[native['regulation_direction'] == m41b.SIGN]
 
-    assert os.path.exists(INPUT_SELECTION), \
-        f'missing {INPUT_SELECTION}; run 54b.stratified_enriched_regulon_heatmap.py first'
-    selected = list(pd.read_csv(INPUT_SELECTION, sep='\t')['TF'])
-    print(f'  {len(selected)} regulons in 54b\'s selection; splitting the native panel by subclass')
+    assert os.path.exists(cfg['selection']), \
+        f'missing {cfg["selection"]}; run the {cfg["tag"]} heatmap script first'
+    selected = list(pd.read_csv(cfg['selection'], sep='\t')['TF'])
+    print(f"  {len(selected)} regulons in the {cfg['tag']} selection; "
+          f'splitting the native panel by subclass')
 
     keys = ['log2_enr', 'fdr_strat', 'overlap', 'n_markers']
     panels, order_rows = [], []
@@ -200,8 +214,8 @@ def main():
         panels.append((label, letters, rows, mats))
         order_rows += [dict(subclass=label, position=i, TF=t) for i, t in enumerate(rows)]
 
-    pd.DataFrame(order_rows).to_csv(OUT_ORDER, sep='\t', index=False)
-    print(f'  wrote -> {OUT_ORDER}')
+    pd.DataFrame(order_rows).to_csv(cfg['out_order'], sep='\t', index=False)
+    print(f"  wrote -> {cfg['out_order']}")
 
     cmap = m54c.plotly_to_mpl_cmap(m54b.build_colorscale())
     norm = Normalize(vmin=m54b.COLOR_MIN, vmax=m54b.COLOR_MAX)
@@ -248,7 +262,7 @@ def main():
 
     fig.suptitle(
         f'Enriched regulons ({m41b.SIGN}) vs archetype markers — each subclass\'s own regulons, '
-        f'split by subclass\n'
+        f'split by subclass ({cfg["tag"]} regulons)\n'
         f'rows clustered independently within each panel ({CLUSTER_METHOD} linkage on the '
         f'log2 enrichment profile), so rows do NOT align across panels\n'
         f'colour = log2 enrichment, area = fraction of the archetype marker set covered; '
@@ -257,9 +271,9 @@ def main():
         f'blue = below the matched expectation',
         fontsize=9, y=1 - 0.18 / fig_h)
 
-    fig.savefig(OUT_PDF, bbox_inches='tight')
+    fig.savefig(cfg['out_pdf'], bbox_inches='tight')
     plt.close(fig)
-    print(f'  Saved {OUT_PDF}')
+    print(f"  Saved {cfg['out_pdf']}")
 
 
 if __name__ == '__main__':

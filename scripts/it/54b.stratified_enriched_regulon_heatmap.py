@@ -91,6 +91,22 @@ COLOR_MIN, COLOR_MAX = -1.5, 3.5
 # scope so the star criterion is readable next to the other two cutoffs
 MASK_MIN_OVERLAP = 5
 
+# Everything that depends on WHICH regulon catalogue is being drawn lives here, so 55b reuses
+# this module instead of copying it. The thresholds above do NOT vary: gao25's unmasked
+# activating log2_enr spans -1.495..3.197, inside this ramp, and its selection curve is flat
+# from 0.5 to 1.25 (58/58/57/55 cells), so STAR_LOG2ENR is nearly non-binding there. Keeping
+# both identical is what lets the two families be compared by colour.
+CFG_YOO25 = dict(
+    tag='yoo25',
+    label='mouse IT subclasses',
+    native_tmpl=INPUT_NATIVE_TMPL,
+    l23set=INPUT_L23SET,
+    out_selection=OUT_SELECTION,
+    out_native=OUT_NATIVE,
+    out_l23set=OUT_L23SET,
+    out_html=OUT_HTML,
+)
+
 os.makedirs(RES_DIR, exist_ok=True)
 os.makedirs(FIG_DIR, exist_ok=True)
 
@@ -118,12 +134,13 @@ def load_41b():
     return mod
 
 
-def load_native(primed, m41b):
+def load_native(primed, m41b, cfg=None):
+    cfg = cfg or CFG_YOO25
     frames = []
     for layer, _token, _label in m41b.LAYER_TOKEN:
-        path = INPUT_NATIVE_TMPL.format(layer=layer)
+        path = cfg['native_tmpl'].format(layer=layer)
         assert os.path.exists(path), \
-            f'missing {path}; run 54.stratified_regulon_archetype_enrichment.py first'
+            f'missing {path}; run the {cfg["tag"]} enrichment script first'
         frames.append(pd.read_csv(path, sep='\t'))
     return m41b.to_col(pd.concat(frames, ignore_index=True), primed)
 
@@ -135,7 +152,7 @@ def starred(df):
             & (df['overlap'] >= MASK_MIN_OVERLAP))
 
 
-def select_rows(native, l23set, cols):
+def select_rows(native, l23set, cols, cfg):
     """Regulons enriched in >=1 archetype of >=1 subclass, grouped by their peak column."""
     nat_sig = native[starred(native)]
     l23_sig = l23set[starred(l23set)]
@@ -165,8 +182,8 @@ def select_rows(native, l23set, cols):
                           col_rank=col_rank[top['col']]))
 
     sel = pd.DataFrame(peaks).sort_values(['col_rank', 'peak_log2_enr'], ascending=[True, False])
-    sel.to_csv(OUT_SELECTION, sep='\t', index=False)
-    print(f'  wrote -> {OUT_SELECTION}')
+    sel.to_csv(cfg['out_selection'], sep='\t', index=False)
+    print(f"  wrote -> {cfg['out_selection']}")
     for col, grp in sel.groupby('peak_col', sort=False):
         print(f'    peak at {col:10s}: {len(grp):2d} regulons  ({", ".join(grp["TF"][:8])}'
               f'{", ..." if len(grp) > 8 else ""})')
@@ -233,8 +250,9 @@ def add_panel(fig, row, mats, rows, cols, primed, m41b):
         fig.add_vline(x=start - 0.5, line=dict(color='black', width=1.5), row=row, col=1)
 
 
-def main():
+def main(cfg=CFG_YOO25):
     m41b = load_41b()
+    print(f"Regulon catalogue: {cfg['tag']}")
     # the one criterion no universe or null choice can inflate, so it is shared verbatim
     assert MASK_MIN_OVERLAP == m41b.MASK_MIN_OVERLAP, \
         f'overlap floor drifted from 41b: {MASK_MIN_OVERLAP} vs {m41b.MASK_MIN_OVERLAP}'
@@ -242,20 +260,20 @@ def main():
     primed = m41b.load_primed_labels()
     cols = m41b.column_keys(primed)
 
-    native = load_native(primed, m41b)
-    assert os.path.exists(INPUT_L23SET), \
-        f'missing {INPUT_L23SET}; run 54.stratified_regulon_archetype_enrichment.py first'
-    l23set = m41b.to_col(pd.read_csv(INPUT_L23SET, sep='\t'), primed)
+    native = load_native(primed, m41b, cfg)
+    assert os.path.exists(cfg['l23set']), \
+        f'missing {cfg["l23set"]}; run the {cfg["tag"]} enrichment script first'
+    l23set = m41b.to_col(pd.read_csv(cfg['l23set'], sep='\t'), primed)
 
     native = native[native['regulation_direction'] == m41b.SIGN]
     l23set = l23set[l23set['regulation_direction'] == m41b.SIGN]
 
-    rows, _sel = select_rows(native, l23set, cols)
+    rows, _sel = select_rows(native, l23set, cols, cfg)
 
     panels = [("each subclass's own regulons", to_matrices(native, rows, cols, m41b.SIGN),
-               OUT_NATIVE),
+               cfg['out_native']),
               ('L2/3 regulons applied to every subclass',
-               to_matrices(l23set, rows, cols, m41b.SIGN), OUT_L23SET)]
+               to_matrices(l23set, rows, cols, m41b.SIGN), cfg['out_l23set'])]
     print(f'\n  {len(rows)} regulons x {len(cols)} subclass-archetype columns')
     for title, mats, outs in panels:
         tested = mats['log2_enr'].notna()
@@ -273,8 +291,8 @@ def main():
 
     panel1 = fig.layout.yaxis.domain   # row 1 y-domain; colorbar is sized to match
     fig.update_layout(
-        title=f'All enriched regulons ({m41b.SIGN}) — archetype marker enrichment across mouse '
-              f'IT subclasses (expression-stratified)<br>'
+        title=f'All enriched regulons ({m41b.SIGN}) — archetype marker enrichment across '
+              f'{cfg["label"]} (expression-stratified, {cfg["tag"]} regulons)<br>'
               f'<sub>colour = log2(observed overlap / expression-matched expectation), 54; '
               f'rows = regulons starred in >=1 cell, grouped by peak column; '
               f'cell label = overlap gene count; boxed = FDR<{STAR_FDR:g} AND '
@@ -288,7 +306,7 @@ def main():
         width=max(760, 62 * len(cols) + 340),
         plot_bgcolor='white', margin=dict(t=120), showlegend=False,
     )
-    _write_fig(fig, OUT_HTML)
+    _write_fig(fig, cfg['out_html'])
 
 
 if __name__ == '__main__':

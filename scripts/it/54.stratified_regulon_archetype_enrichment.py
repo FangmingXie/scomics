@@ -107,6 +107,28 @@ os.makedirs(RES_DIR, exist_ok=True)
 os.makedirs(FIG_DIR, exist_ok=True)
 
 
+def load_regulons_41format(cfg):
+    """Regulon table in 40/41's shape: regulon / TF / regulation_direction / Gene already set."""
+    return pd.read_csv(os.path.join(RES_DIR, cfg['regulons']), sep='\t')
+
+
+# Everything that depends on WHICH regulon catalogue is being tested lives here, so a second
+# catalogue (55, gao25) reuses this whole module instead of copying it. The universe, the
+# archetype markers and therefore the expression strata are properties of 41's LAYERS and do
+# not vary between catalogues -- only `load_regulons`, the L2/3 source and the output paths do.
+CFG_YOO25 = dict(
+    tag='yoo25',
+    load_regulons=load_regulons_41format,
+    load_l23=lambda: pd.read_csv(INPUT_L23_REGULONS, sep='\t'),
+    l23_source=INPUT_L23_REGULONS,
+    out_long_tmpl=OUT_LONG_TMPL,
+    out_l23set=OUT_L23SET,
+    out_robustness=OUT_ROBUSTNESS,
+    out_bin_sens=OUT_BIN_SENS,
+    out_pdf=OUT_PDF,
+)
+
+
 def load_41():
     """Import 41 as a module (its filename is not a valid identifier) for its helpers."""
     spec = importlib.util.spec_from_file_location('script41', SCRIPT_41)
@@ -212,7 +234,7 @@ def mc_check(bins, counts, m_idx, t_idx, rng):
         f'closed-form tail {tail_exact:.5f} disagrees with resampling {tail_mc:.5f}'
 
 
-def build_layer(cfg, m41, adatas):
+def build_layer(cfg, m41, adatas, dcfg):
     """Load one layer's universe, marker sets and regulon sets as index arrays over U."""
     layer, noc = cfg['layer'], cfg['noc']
     print(f'\n=== {layer} ===')
@@ -229,7 +251,7 @@ def build_layer(cfg, m41, adatas):
              for a in arch_labels}
     M_idx = {a: np.array(sorted(gi[g] for g in s), dtype=np.int64) for a, s in M_raw.items()}
 
-    reg = pd.read_csv(os.path.join(RES_DIR, cfg['regulons']), sep='\t')
+    reg = dcfg['load_regulons'](cfg)
     reg_meta = reg.drop_duplicates('regulon').set_index('regulon')[['TF', 'regulation_direction']]
     T_raw = {r: set(g['Gene']) & universe for r, g in reg.groupby('regulon')}
     n_total = len(T_raw)
@@ -279,13 +301,13 @@ def decorate(long, L, t_sizes, reg_meta, m41):
     return long[cols]
 
 
-def enrich_layer(L, m41, rng):
+def enrich_layer(L, m41, rng, dcfg):
     """Panel 1 for one layer: each subclass's own regulons vs its own archetype markers."""
     bins, counts = make_strata(L['stats'], L['U'], N_BINS, BIN_COVARIATE)
     long = score_layer(L['layer'], bins, counts, L['M_idx'], L['T_idx'], L['arch_labels'])
     long = decorate(long, L, {r: len(s) for r, s in L['T_raw'].items()}, L['reg_meta'], m41)
 
-    out = OUT_LONG_TMPL.format(layer=L['layer'])
+    out = dcfg['out_long_tmpl'].format(layer=L['layer'])
     long.to_csv(out, sep='\t', index=False)
     n_zero = int((long['overlap'] == 0).sum())
     print(f'    wrote -> {out} ({len(long)} pairs; {n_zero} with overlap 0 '
@@ -300,7 +322,7 @@ def enrich_layer(L, m41, rng):
     return long
 
 
-def enrich_l23_set(Ls, m41):
+def enrich_l23_set(Ls, m41, dcfg):
     """Panel 2: the L2/3 regulon target sets tested against EVERY subclass's markers.
 
     Mirrors 41b.enrich_l23_set_in_layer, but under this script's stratified null. Each layer
@@ -308,10 +330,10 @@ def enrich_l23_set(Ls, m41):
     a row reads across subclasses as one gene set meeting four different marker programmes.
     """
     print('\n=== L2/3 regulon set, applied to every subclass ===')
-    reg = pd.read_csv(INPUT_L23_REGULONS, sep='\t')
+    reg = dcfg['load_l23']()
     reg_meta = reg.drop_duplicates('regulon').set_index('regulon')[['TF', 'regulation_direction']]
     T_all = {r: set(g['Gene']) for r, g in reg.groupby('regulon')}
-    print(f'  L2/3 regulon source: {len(T_all)} regulons from {INPUT_L23_REGULONS}')
+    print(f"  L2/3 regulon source: {len(T_all)} regulons from {dcfg['l23_source']}")
 
     longs = []
     for L in Ls:
@@ -329,8 +351,8 @@ def enrich_l23_set(Ls, m41):
         longs.append(long)
 
     out = pd.concat(longs, ignore_index=True)
-    out.to_csv(OUT_L23SET, sep='\t', index=False)
-    print(f'  wrote -> {OUT_L23SET} ({len(out)} pairs)')
+    out.to_csv(dcfg['out_l23set'], sep='\t', index=False)
+    print(f"  wrote -> {dcfg['out_l23set']} ({len(out)} pairs)")
     return out
 
 
@@ -406,7 +428,7 @@ def bin_sensitivity(L):
     return out
 
 
-def plot_comparison(longs):
+def plot_comparison(longs, dcfg):
     """log2_or vs log2_enr per layer, marking the pairs 41b/41d already gray out."""
     fig, axes = plt.subplots(1, len(longs), figsize=(3.5 * len(longs) + 1.0, 3.9),
                              sharex=True, sharey=True)
@@ -441,15 +463,16 @@ def plot_comparison(longs):
     fig.suptitle('Expression stratification demotes small-overlap pairs that 41 scores as strong\n'
                  'points below the diagonal: enrichment the single-stratum null overstates',
                  fontsize=10, y=1.13)
-    fig.savefig(OUT_PDF, bbox_inches='tight')
+    fig.savefig(dcfg['out_pdf'], bbox_inches='tight')
     plt.close(fig)
-    print(f'\n  Saved {OUT_PDF}')
+    print(f"\n  Saved {dcfg['out_pdf']}")
 
 
 # --------------------------------------------------------------------------- main
 
-def main():
+def main(dcfg=CFG_YOO25):
     m41 = load_41()
+    print(f"Regulon catalogue: {dcfg['tag']}")
     rng = np.random.default_rng(0)
 
     print('Loading h5ad inputs once...')
@@ -459,19 +482,19 @@ def main():
 
     Ls, longs, robust, sens = [], [], [], []
     for cfg in m41.LAYERS:
-        L = build_layer(cfg, m41, adatas)
+        L = build_layer(cfg, m41, adatas, dcfg)
         Ls.append(L)
-        longs.append(enrich_layer(L, m41, rng))
+        longs.append(enrich_layer(L, m41, rng, dcfg))
         robust.append(universe_robustness(L, m41))
         sens.append(bin_sensitivity(L))
 
-    enrich_l23_set(Ls, m41)
+    enrich_l23_set(Ls, m41, dcfg)
 
-    pd.concat(robust, ignore_index=True).to_csv(OUT_ROBUSTNESS, sep='\t', index=False)
-    print(f'\n  wrote -> {OUT_ROBUSTNESS}')
-    pd.concat(sens, ignore_index=True).to_csv(OUT_BIN_SENS, sep='\t', index=False)
-    print(f'  wrote -> {OUT_BIN_SENS}')
-    plot_comparison(longs)
+    pd.concat(robust, ignore_index=True).to_csv(dcfg['out_robustness'], sep='\t', index=False)
+    print(f"\n  wrote -> {dcfg['out_robustness']}")
+    pd.concat(sens, ignore_index=True).to_csv(dcfg['out_bin_sens'], sep='\t', index=False)
+    print(f"  wrote -> {dcfg['out_bin_sens']}")
+    plot_comparison(longs, dcfg)
 
     all_long = pd.concat(longs, ignore_index=True)
     rho = all_long[['log2_or', 'log2_enr']].corr('spearman').iloc[0, 1]
