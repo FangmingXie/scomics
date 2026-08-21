@@ -35,6 +35,9 @@ import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
+# fonttype 42 embeds TrueType so the PDF keeps real text objects; the default (3) writes
+# Type 3 glyph procedures, which Illustrator/Inkscape open as uneditable outlines
+matplotlib.rcParams['pdf.fonttype'] = 42
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.lines import Line2D
