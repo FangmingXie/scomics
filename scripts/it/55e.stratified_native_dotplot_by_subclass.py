@@ -14,6 +14,7 @@ figures be compared by colour.
 Reads:
   local_data/res/it/55.<layer>_stratified_enrichment.tsv
   local_data/res/it/55b.enriched_regulon_selection.tsv      (row set; order is re-derived)
+  local_data/res/it/57.gao25_iegunion_stratified_enrichment.tsv   (the pinned (IEGs) row)
 Outputs:
   local_data/res/it/55e.clustered_row_order.tsv
   local_data/fig/it/55e.stratified_native_dotplot_by_subclass.pdf
@@ -34,6 +35,7 @@ PARENT_SCRIPT = os.path.join(SCRIPTS_DIR, 'it', '54e.stratified_native_dotplot_b
 INPUT_NATIVE_TMPL = os.path.join(RES_DIR, '55.{layer}_stratified_enrichment.tsv')
 INPUT_L23SET = os.path.join(RES_DIR, '55.l23set_stratified_enrichment.tsv')
 INPUT_SELECTION = os.path.join(RES_DIR, '55b.enriched_regulon_selection.tsv')
+INPUT_IEGUNION = os.path.join(RES_DIR, '57.gao25_iegunion_stratified_enrichment.tsv')
 OUT_ORDER = os.path.join(RES_DIR, '55e.clustered_row_order.tsv')
 OUT_PDF = os.path.join(FIG_DIR, '55e.stratified_native_dotplot_by_subclass.pdf')
 
@@ -43,6 +45,7 @@ CFG_GAO25 = dict(
     native_tmpl=INPUT_NATIVE_TMPL,
     l23set=INPUT_L23SET,
     selection=INPUT_SELECTION,
+    iegunion=INPUT_IEGUNION,
     out_pdf=OUT_PDF,
     out_order=OUT_ORDER,)
 

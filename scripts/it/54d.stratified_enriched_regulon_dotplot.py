@@ -26,10 +26,21 @@ this figure cannot disagree with them: gray fill = overlap < MASK_MIN_OVERLAP (t
 genes to trust), black outline = the star criterion, nothing drawn where the regulon does not
 exist in that subclass.
 
+THE `(IEGs)` ROW, below the rule at the bottom of each panel, is not a regulon. It is the
+union of the eight immediate-early target sets (Fos, Fosb, Fosl2, Junb, Egr1-4), scored by 57
+under this same stratified null and appended here as an ordinary row, so the mask rule, the
+star rule and both encodings apply to it unchanged. Reading it against the eight rows it
+summarises is the point: a union covers more of a marker set than any one member (it reaches
+0.414 of L2/3 B' on yoo25, which is why FRAC_REF moved), and the stratified null charges for
+the larger gene set, so a union row that stays strongly enriched is saying the programme is
+enriched rather than one lucky regulon. It is pinned rather than ranked because it is a
+summary of rows already in the figure, not a peer of them.
+
 Reads:
   local_data/res/it/54.<layer>_stratified_enrichment.tsv    (panel 1, via 54b.load_native)
   local_data/res/it/54.l23set_stratified_enrichment.tsv     (panel 2)
   local_data/res/it/54b.enriched_regulon_selection.tsv       (row set + row order)
+  local_data/res/it/57.yoo25_iegunion_stratified_enrichment.tsv   (the pinned (IEGs) row)
 Outputs:
   local_data/fig/it/54d.stratified_enriched_regulon_dotplot.pdf
 """
@@ -59,7 +70,9 @@ FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
 SCRIPT_41B = os.path.join(SCRIPTS_DIR, 'it', '41b.selected_regulon_archetype_enrichment.py')
 SCRIPT_54B = os.path.join(SCRIPTS_DIR, 'it', '54b.stratified_enriched_regulon_heatmap.py')
 SCRIPT_54C = os.path.join(SCRIPTS_DIR, 'it', '54c.stratified_enriched_regulon_heatmap_pdf.py')
+SCRIPT_57 = os.path.join(SCRIPTS_DIR, 'it', '57.ieg_union_regulon_enrichment.py')
 INPUT_SELECTION = os.path.join(RES_DIR, '54b.enriched_regulon_selection.tsv')
+INPUT_IEGUNION = os.path.join(RES_DIR, '57.yoo25_iegunion_stratified_enrichment.tsv')
 OUT_PDF = os.path.join(FIG_DIR, '54d.stratified_enriched_regulon_dotplot.pdf')
 
 # Everything that depends on WHICH regulon catalogue is being drawn lives here, so the 55x
@@ -71,16 +84,26 @@ CFG_YOO25 = dict(
     native_tmpl=os.path.join(RES_DIR, '54.{layer}_stratified_enrichment.tsv'),
     l23set=os.path.join(RES_DIR, '54.l23set_stratified_enrichment.tsv'),
     selection=INPUT_SELECTION,
+    iegunion=INPUT_IEGUNION,
     out_pdf=OUT_PDF,
 )
 
 # area encoding: a dot at FRAC_REF covers SIZE_REF points^2, area scaling linearly with the
-# fraction so twice the area reads as twice the coverage. FRAC_REF sits just above the
-# observed maximum over both panels (0.382, the L2/3-set panel; the native panel reaches 0.353)
-FRAC_REF = 0.40
+# fraction so twice the area reads as twice the coverage. FRAC_REF sits just above the observed
+# maximum over both panels and both catalogues. It was 0.40 while the rows were single regulons
+# (max 0.382); the `(IEGs)` union row reaches 0.414 on yoo25 L2/3 B', which is the point of a
+# union -- eight overlapping target sets cover more of a marker programme than any one of them
+# -- so the reference moves rather than the row being clipped. Every dot in the figure shrinks
+# by 0.40/0.45 as a result; the encoding stays linear, which is what makes areas comparable.
+FRAC_REF = 0.45
 SIZE_REF = 260.0
-SIZE_LEGEND = [0.05, 0.15, 0.25, 0.35]
+SIZE_LEGEND = [0.05, 0.15, 0.25, 0.35, 0.45]
 BOX_LW = 1.4             # outline width for significant cells
+# `(IEGs)` is a summary of eight rows, not a ninth regulon, so it is pinned to the bottom of
+# every panel below a rule rather than being ranked among them -- 41b's convention for a row
+# block of a different kind. Set False to draw the figure without it.
+SHOW_IEG_UNION = True
+UNION_RULE_LW = 1.2
 CELL_W, CELL_H = 0.50, 0.21      # inches per matrix cell, matching 54c
 
 os.makedirs(FIG_DIR, exist_ok=True)
@@ -145,6 +168,7 @@ def main(cfg=CFG_YOO25):
     m41b = load_module(SCRIPT_41B, 'script41b')
     m54b = load_module(SCRIPT_54B, 'script54b')
     m54c = load_module(SCRIPT_54C, 'script54c')   # for the plotly -> matplotlib ramp
+    m57 = load_module(SCRIPT_57, 'script57')      # the (IEGs) union row
 
     primed = m41b.load_primed_labels()
     cols = m41b.column_keys(primed)
@@ -159,7 +183,17 @@ def main(cfg=CFG_YOO25):
     assert os.path.exists(cfg['selection']), \
         f'missing {cfg["selection"]}; run the {cfg["tag"]} heatmap script first'
     rows = list(pd.read_csv(cfg['selection'], sep='\t')['TF'])
-    print(f'  {len(rows)} regulons x {len(cols)} subclass-archetype columns, 2 panels')
+
+    # the union row joins the long tables as an ordinary regulon so to_matrices, the mask rule
+    # and the star rule all apply to it unchanged; only its position is special
+    if SHOW_IEG_UNION:
+        native = pd.concat([native, m57.load_union_long(cfg['iegunion'], 'native', primed,
+                                                        m41b)], ignore_index=True)
+        l23set = pd.concat([l23set, m57.load_union_long(cfg['iegunion'], 'l23set', primed,
+                                                        m41b)], ignore_index=True)
+        rows = rows + [m57.UNION_TF]
+        print(f"  {m57.UNION_TF} = union of {', '.join(m57.IEG_TFS)}, pinned below the rule")
+    print(f'  {len(rows)} rows x {len(cols)} subclass-archetype columns, 2 panels')
 
     panels = [("each subclass's own regulons",
                m54b.to_matrices(native, rows, cols, m41b.SIGN)),
@@ -175,6 +209,8 @@ def main(cfg=CFG_YOO25):
     axes = np.atleast_1d(axes)
     for ax, (title, mats) in zip(axes, panels):
         mappable = draw_panel(ax, mats, rows, cols, primed, m41b, m54b, cmap, norm)
+        if SHOW_IEG_UNION:
+            ax.axhline(len(rows) - 1.5, color='black', lw=UNION_RULE_LW, zorder=2)
         ax.set_title(title, fontsize=10, pad=8)
         tested = np.isfinite(mats['log2_enr'].values)
         thin = int((tested & (mats['overlap'].values < m41b.MASK_MIN_OVERLAP)).sum())

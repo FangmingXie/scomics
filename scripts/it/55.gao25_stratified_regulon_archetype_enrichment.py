@@ -198,9 +198,14 @@ def verify_against_naive(m54):
           f'({n_dual} dual-form regulons excluded)')
 
 
-def main():
-    m54 = load_54()
-    cfg = dict(
+def build_cfg():
+    """The catalogue config 54.main() is driven by; also what 57 needs to reuse the loaders.
+
+    Module-level rather than inline in main() so a script that wants the gao25 regulon
+    sources -- not the gao25 run -- can take them from one place instead of restating the
+    file paths and the direct-over-extended rule.
+    """
+    return dict(
         tag='gao25',
         load_regulons=load_regulons_gao25,
         # gao25's L2/3 catalogue is the fixed regulon source for panel 2
@@ -212,7 +217,11 @@ def main():
         out_bin_sens=OUT_BIN_SENS,
         out_pdf=OUT_PDF,
     )
-    m54.main(cfg)
+
+
+def main():
+    m54 = load_54()
+    m54.main(build_cfg())
     if VERIFY_AGAINST_NAIVE:
         verify_against_naive(m54)
 
