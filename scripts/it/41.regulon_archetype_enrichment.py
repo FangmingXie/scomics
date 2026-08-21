@@ -98,6 +98,10 @@ def reconstruct_gene_universe(coords_index, subclass_val, adatas):
     embedding cells. Replicates scripts/it/33.follow.two_L4_archetype_scores.py:127-176.
 
     `adatas` maps tag -> full AnnData (loaded once); this subsets to `subclass_val`.
+
+    Returns (universe, stats) where `stats` is a DataFrame indexed by the universe genes
+    with per-gene `mean` / `var` / `detect` over the same cells. 41e stratifies the universe on
+    `mean`, so the statistics must come from this matrix rather than be recomputed.
     """
     subs = {}
     for d in DATASETS:
@@ -136,9 +140,12 @@ def reconstruct_gene_universe(coords_index, subclass_val, adatas):
     X = expr_df.values
     keep = (X.sum(axis=0) > 0) & (X.var(axis=0) > 0)
     universe = expr_df.columns.values[keep]
+    Xk = X[:, keep]
+    stats = pd.DataFrame({'mean': Xk.mean(axis=0), 'var': Xk.var(axis=0),
+                          'detect': (Xk > 0).mean(axis=0)}, index=universe)
     print(f'    gene universe: {keep.sum()} expressed nonzero-variance genes '
           f'(dropped {(~keep).sum()} of {keep.size})')
-    return set(universe)
+    return set(universe), stats
 
 
 def log2_odds_ratio(x, M, T, N):
@@ -152,7 +159,7 @@ def enrich_layer(cfg, adatas):
     print(f'\n=== {layer} ===')
 
     coords = pd.read_csv(os.path.join(RES_DIR, cfg['coords']), sep='\t', index_col=0)
-    universe = reconstruct_gene_universe(coords.index.values, cfg['subclass_val'], adatas)
+    universe, _ = reconstruct_gene_universe(coords.index.values, cfg['subclass_val'], adatas)
     N = len(universe)
 
     # archetype marker sets (restricted to universe), ordered archetype_1..noc

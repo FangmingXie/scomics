@@ -185,7 +185,7 @@ def enrich_l23_set_in_layer(cfg, T_sets_all, reg_meta, m41, adatas):
     print(f'\n=== L2/3 regulons in {layer} ===')
 
     coords = pd.read_csv(os.path.join(RES_DIR, cfg['coords']), sep='\t', index_col=0)
-    universe = m41.reconstruct_gene_universe(coords.index.values, cfg['subclass_val'], adatas)
+    universe, _ = m41.reconstruct_gene_universe(coords.index.values, cfg['subclass_val'], adatas)
     N = len(universe)
 
     markers = pd.read_csv(os.path.join(RES_DIR, cfg['markers']), sep='\t')
