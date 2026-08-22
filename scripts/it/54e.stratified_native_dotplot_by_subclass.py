@@ -26,7 +26,6 @@ on, and would otherwise dominate the small panels; the count dropped is printed 
 Reads:
   local_data/res/it/54.<layer>_stratified_enrichment.tsv    (via 54b.load_native)
   local_data/res/it/54b.enriched_regulon_selection.tsv       (row set; order is re-derived)
-  local_data/res/it/57.yoo25_iegunion_stratified_enrichment.tsv   (the pinned (IEGs) row)
 Outputs:
   local_data/res/it/54e.clustered_row_order.tsv
   local_data/fig/it/54e.stratified_native_dotplot_by_subclass.pdf
@@ -58,9 +57,7 @@ FIG_DIR = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'it')
 SCRIPT_41B = os.path.join(SCRIPTS_DIR, 'it', '41b.selected_regulon_archetype_enrichment.py')
 SCRIPT_54B = os.path.join(SCRIPTS_DIR, 'it', '54b.stratified_enriched_regulon_heatmap.py')
 SCRIPT_54C = os.path.join(SCRIPTS_DIR, 'it', '54c.stratified_enriched_regulon_heatmap_pdf.py')
-SCRIPT_57 = os.path.join(SCRIPTS_DIR, 'it', '57.ieg_union_regulon_enrichment.py')
 INPUT_SELECTION = os.path.join(RES_DIR, '54b.enriched_regulon_selection.tsv')
-INPUT_IEGUNION = os.path.join(RES_DIR, '57.yoo25_iegunion_stratified_enrichment.tsv')
 OUT_ORDER = os.path.join(RES_DIR, '54e.clustered_row_order.tsv')
 OUT_PDF = os.path.join(FIG_DIR, '54e.stratified_native_dotplot_by_subclass.pdf')
 
@@ -73,29 +70,19 @@ CFG_YOO25 = dict(
     native_tmpl=os.path.join(RES_DIR, '54.{layer}_stratified_enrichment.tsv'),
     l23set=os.path.join(RES_DIR, '54.l23set_stratified_enrichment.tsv'),
     selection=INPUT_SELECTION,
-    iegunion=INPUT_IEGUNION,
     out_pdf=OUT_PDF,
     out_order=OUT_ORDER,
 )
 
 # area encoding, as 54d: a dot at FRAC_REF covers SIZE_REF points^2, area linear in the
-# fraction. Kept identical to 54d's so a dot means the same size in both figures -- which is
-# why this moved from 0.40 to 0.45 when the `(IEGs)` union row was added there; see 54d.
-FRAC_REF = 0.45
+# fraction. FRAC_REF sits just above the native panel's observed maximum (0.353).
+FRAC_REF = 0.40
 SIZE_REF = 260.0
-SIZE_LEGEND = [0.05, 0.15, 0.25, 0.35, 0.45]
+SIZE_LEGEND = [0.05, 0.15, 0.25, 0.35]
 BOX_LW = 1.4
 
 # drop rows with no unmasked cell in a subclass; see the module docstring
 REQUIRE_UNMASKED_ROW = True
-# `(IEGs)` -- the union of the eight IEG target sets, computed by 57 -- is a summary of rows
-# already in the panel, not a peer of them. It is therefore pinned to the bottom of every
-# subclass below a rule, kept OUT of the clustering (a summary would drag whichever block it
-# resembles toward itself and change the very structure this figure is drawn to show), and
-# exempt from REQUIRE_UNMASKED_ROW: if it is fully masked in a subclass that is a fact about
-# the subclass worth seeing, not a reason to hide the reference row.
-SHOW_IEG_UNION = True
-UNION_RULE_LW = 1.2
 # average linkage on the euclidean distance between log2_enr profiles, with masked and absent
 # cells read as 0 (no trustworthy enrichment). optimal_ordering flips branches to minimise the
 # distance between adjacent leaves, which is what makes the blocks read as blocks.
@@ -192,16 +179,10 @@ def main(cfg=CFG_YOO25):
     m41b = load_module(SCRIPT_41B, 'script41b')
     m54b = load_module(SCRIPT_54B, 'script54b')
     m54c = load_module(SCRIPT_54C, 'script54c')   # for the plotly -> matplotlib ramp
-    m57 = load_module(SCRIPT_57, 'script57')      # the (IEGs) union row
 
     primed = m41b.load_primed_labels()
     native = m54b.load_native(primed, m41b, cfg)
     native = native[native['regulation_direction'] == m41b.SIGN]
-    if SHOW_IEG_UNION:
-        native = pd.concat([native, m57.load_union_long(cfg['iegunion'], 'native', primed,
-                                                        m41b)], ignore_index=True)
-        print(f"  {m57.UNION_TF} = union of {', '.join(m57.IEG_TFS)}, pinned below the rule "
-              'in every subclass and excluded from the clustering')
 
     assert os.path.exists(cfg['selection']), \
         f'missing {cfg["selection"]}; run the {cfg["tag"]} heatmap script first'
@@ -226,12 +207,9 @@ def main(cfg=CFG_YOO25):
 
         mats = layer_matrices(native, layer, rows, letters, keys)
         rows = cluster_rows(mats, rows, m41b)
-        n_clustered = len(rows)
-        if SHOW_IEG_UNION:
-            rows = rows + [m57.UNION_TF]        # appended after clustering, never inside it
         mats = layer_matrices(native, layer, rows, letters, keys)
-        print(f'  {label:5s}: {len(letters)} archetypes, {n_clustered} clustered rows '
-              f'({len(present) - n_clustered} dropped as fully masked, '
+        print(f'  {label:5s}: {len(letters)} archetypes, {len(rows)} rows '
+              f'({len(present) - len(rows)} dropped as fully masked, '
               f'{len(selected) - len(present)} absent from this subclass)')
         panels.append((label, letters, rows, mats))
         order_rows += [dict(subclass=label, position=i, TF=t) for i, t in enumerate(rows)]
@@ -255,8 +233,6 @@ def main(cfg=CFG_YOO25):
         ax = fig.add_axes([x_cursor / fig_w, (fig_h - TOP_PAD - h) / fig_h,
                            w / fig_w, h / fig_h])
         mappable = draw_panel(ax, mats, rows, letters, label, m41b, m54b, cmap, norm)
-        if SHOW_IEG_UNION:
-            ax.axhline(len(rows) - 1.5, color='black', lw=UNION_RULE_LW, zorder=2)
         axes.append(ax)
         x_cursor += w + PANEL_GAP
 
