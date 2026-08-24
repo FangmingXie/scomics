@@ -5,18 +5,21 @@ Extends `24b.viz.human_mouse_L23_gene_loadings_boxplot.py` (L2/3 only) to the IT
 are the two conserved canonical axes (CCA1, CCA2). Each cell is the same joint plot as 24b —
 scatter of per-gene mouse-vs-human canonical projections coloured by mouse archetype, with a
 horizontal boxplot per group below the x-axis and a vertical one along the y-axis, plus
-Mann-Whitney U stars for ALL pairwise comparisons among the groups. See 24b for why boxes
-beat KDE marginals.
+Mann-Whitney U stars for the pairwise comparisons among the groups. See 24b for why boxes
+beat KDE marginals. Under hvg_intersect the top genes by |mouse.human| loading are circled and
+named on the scatter; the far denser hvg_union scatter drops both (LABEL_TOP).
 
-Pairwise annotation (both marginals, per species). Every pair of the four boxplot groups
-(the gray "other" bulk plus each mouse archetype) is tested and drawn the same way: a bracket
-spanning the two slots with the significance stars beside it. Brackets are packed
-shortest-span-first into as few lanes as fit without overlapping or touching — five lanes for
-four groups — inside a band reserved past the data by widening the shared axis limits, so no
-annotation overlaps a box. Full p-values and rank-biserial effect sizes for every pair go to
-stdout. As in 24b these are descriptive: the groups are not independent and NO multiplicity
-correction is applied — with all pairs now shown that is a larger family, so read the stars
-alongside the rank-biserial sizes rather than as a family-wise test.
+Pairwise annotation (both marginals, per species). Each tested pair of boxplot groups is drawn
+the same way: a bracket spanning the two slots with the significance stars beside it. WHICH
+pairs are tested is PAIR_WITH_OTHER: hvg_intersect tests every pair of the four groups (the
+gray "other" bulk plus each mouse archetype — five lanes), while hvg_union tests only the
+archetype-vs-archetype pairs and leaves "other" out of the statistics entirely (it is still
+drawn as a box). Brackets are packed shortest-span-first into as few lanes as fit without
+overlapping or touching, inside a band reserved past the data by widening the shared axis
+limits, so no annotation overlaps a box. Full p-values and rank-biserial effect sizes for every
+tested pair go to stdout. As in 24b these are descriptive: the groups are not independent and NO
+multiplicity correction is applied, so read the stars alongside the rank-biserial sizes rather
+than as a family-wise test.
 
 A subclass is drawn only if every input it needs for the chosen universe exists (else it is
 logged and omitted). Under hvg_intersect all four layers qualify; under hvg_union only L2/3 and
@@ -93,10 +96,16 @@ BASE_COLOR   = '#bdbdbd'                            # "other" genes: neutral gra
 POINT_SIZE   = {'hvg_intersect': 10, 'hvg_union': 4}[UNIVERSE]
 BASE_ALPHA   = {'hvg_intersect': 1.0, 'hvg_union': 0.45}[UNIVERSE]
 ARCH_BUMP    = {'hvg_intersect': 12, 'hvg_union': 6}[UNIVERSE]
-TOP_N_LABEL  = 15                                   # label the top genes by |mouse.human| loading
+TOP_N_LABEL  = 15                                   # circle+label the top genes by |mouse.human|
+# the union scatter is too dense for per-gene circles and labels to read, so it drops them
+LABEL_TOP    = {'hvg_intersect': True, 'hvg_union': False}[UNIVERSE]
 BOX_WIDTH    = 0.62                                 # fraction of the unit slot each box fills
 FLIER_SIZE   = 3.0                                  # outlier marker size (points)
 SIG_LEVELS   = [(0.001, '***'), (0.01, '**'), (0.05, '*')]   # MWU; else 'ns'
+# whether the gray "other" bulk takes part in the pairwise tests (it is drawn as a box either way)
+PAIR_WITH_OTHER = {'hvg_intersect': True, 'hvg_union': False}[UNIVERSE]
+PAIR_NOTE       = ('MWU, one bracket per group pair' if PAIR_WITH_OTHER else
+                   'MWU, one bracket per archetype pair')
 PAIR_LANE_FRAC = 0.05     # value-axis fraction reserved per pairwise-bracket lane
 BRACKET_LW     = 0.7      # bracket line width
 BRACKET_TICK   = 0.20     # bracket end-tick length, as a fraction of one lane's width
@@ -218,29 +227,38 @@ def mwu(a, b):
     return p, 2 * u / (len(a) * len(b)) - 1
 
 
-def mwu_pairs(vals, S):
-    """Mann-Whitney U of EVERY pair of boxplot groups. (group_a, group_b) -> (p, rb).
+def tested_pairs(S):
+    """The group pairs that get a Mann-Whitney U, in `S['groups']` order.
 
-    Groups are the 'other' bulk plus each mouse archetype, so this is the full pairwise
-    family. Uncorrected for multiplicity — see the module docstring; descriptive, not a
-    family-wise test.
+    Every pair under PAIR_WITH_OTHER, else only the archetype-vs-archetype pairs.
+    """
+    keys = [k for k, _ in S['groups']]
+    return [(a, b) for a, b in combinations(keys, 2)
+            if PAIR_WITH_OTHER or 'other' not in (a, b)]
+
+
+def mwu_pairs(vals, S):
+    """Mann-Whitney U of every tested pair of boxplot groups. (group_a, group_b) -> (p, rb).
+
+    Uncorrected for multiplicity — see the module docstring; descriptive, not a family-wise
+    test.
     """
     g = group_values(vals, S)
-    return {(a, b): mwu(g[a], g[b]) for a, b in combinations([k for k, _ in S['groups']], 2)
+    return {(a, b): mwu(g[a], g[b]) for a, b in tested_pairs(S)
             if len(g[a]) >= 1 and len(g[b]) >= 1}
 
 
 def pair_lanes(S):
-    """Bracket layout for every group pair: [(lo, hi, a, b, lane)], n_lanes.
+    """Bracket layout for every tested group pair: [(lo, hi, a, b, lane)], n_lanes.
 
     Slots are the group positions in S['groups'] ('other' at 0, then the archetypes). Pairs
     are packed greedily shortest-span first, a pair joining a new lane only when its span
     neither overlaps NOR touches one already in that lane (touching would collide the end
-    ticks). Four groups pack into five lanes.
+    ticks). All four groups pack into five lanes; the three archetypes alone into three.
     """
     pos = {g: k for k, (g, _) in enumerate(S['groups'])}
     pairs = sorted(((min(pos[a], pos[b]), max(pos[a], pos[b]), a, b)
-                    for a, b in combinations([k for k, _ in S['groups']], 2)),
+                    for a, b in tested_pairs(S)),
                    key=lambda t: (t[1] - t[0], t[0]))
     lanes, out = [], []
     for lo, hi, a, b in pairs:
@@ -333,7 +351,6 @@ def draw_joint(subfig, S, axis_label, ms, hs, sig):
             f'canonical correlation {sig["r_cca"]:.6f} the permutation p-value tests — 16\'s saved '
             f'weights are not the canonical vectors for this gene universe')
     p_str = (f'p < {1 / (N_PERM + 1):.0e}' if sig['n_ge'] == 0 else f'p = {sig["p"]:.1e}')
-    top_idx = np.argsort(np.abs(ms * hs))[::-1][:TOP_N_LABEL]
     data_lim = np.array([min(ms.min(), hs.min()), max(ms.max(), hs.max())]) * 1.08
 
     # Reserve a band past the data on the value axis for the significance brackets: one lane
@@ -363,11 +380,13 @@ def draw_joint(subfig, S, axis_label, ms, hs, sig):
     ax_main.axhline(0, color='0.75', lw=0.6, zorder=0)
     ax_main.axvline(0, color='0.75', lw=0.6, zorder=0)
     ax_main.plot(data_lim, data_lim, '--', color='0.6', lw=0.8, zorder=0)
-    ax_main.scatter(ms[top_idx], hs[top_idx], s=POINT_SIZE + ARCH_BUMP + 6, facecolors='none',
-                    edgecolors='black', linewidths=0.7, zorder=4)
-    for i in top_idx:
-        ax_main.annotate(S['symbols'][i], (ms[i], hs[i]), textcoords='offset points',
-                         xytext=(4, 3), fontsize=6, fontstyle='italic', zorder=5)
+    if LABEL_TOP:
+        top_idx = np.argsort(np.abs(ms * hs))[::-1][:TOP_N_LABEL]
+        ax_main.scatter(ms[top_idx], hs[top_idx], s=POINT_SIZE + ARCH_BUMP + 6, facecolors='none',
+                        edgecolors='black', linewidths=0.7, zorder=4)
+        for i in top_idx:
+            ax_main.annotate(S['symbols'][i], (ms[i], hs[i]), textcoords='offset points',
+                             xytext=(4, 3), fontsize=6, fontstyle='italic', zorder=5)
 
     ax_main.set_xlim(lim); ax_main.set_ylim(lim)
     ax_main.set_ylabel(f'Human Jorstad23 {axis_label} gene loading')
@@ -395,7 +414,7 @@ def draw_joint(subfig, S, axis_label, ms, hs, sig):
     ax_boxy.set_xticklabels(labels, fontsize=8)
     ax_boxy.axhline(0, color='0.75', lw=0.6, zorder=0)
     ax_boxy.tick_params(labelleft=False)
-    ax_boxy.set_xlabel('MWU, one bracket per group pair\n'
+    ax_boxy.set_xlabel(f'{PAIR_NOTE}\n'
                        'ns * .05 ** .01 *** .001 (uncorrected)', fontsize=6)
 
     sns.despine(ax=ax_boxx)
