@@ -133,6 +133,12 @@ FDR_THRESH = 0.05   # BH-FDR across the archetypes, for the significance stars
 MARKER_COLOR  = '#2b7bba'
 CONTROL_COLOR = '0.72'   # grey: the control set carries no archetype identity
 
+# The per-archetype mean log2FC annotation is printed only where the competitive test survives
+# FDR: an unsupported shift is not a number worth reading off. One archetype is emphasised in
+# bold -- L2/3 B', the only set that moves down under dark rearing and by far the largest effect
+# in the panel.
+LFC_BOLD = ('L2/3', "B'")   # (subclass, relabelled archetype)
+
 
 def load_arch_map():
     """Read the persisted depth-arc table into {token: {old_letter: (new_letter, arc_rank)}}."""
@@ -501,7 +507,13 @@ def main():
                 [y_br, y_br + 0.02 * span, y_br + 0.02 * span, y_br], color='0.3', linewidth=0.8)
         ax.text(x[xi], y_br + 0.03 * span, r.stars, ha='center', va='bottom',
                 fontsize=8 if r.stars != 'n.s.' else 7, color='0.2')
-    ax.set_ylim(ymin, y_br + 0.16 * span)
+        # the effect size the stars refer to, spelled out: the marker set's mean log2FC, shown
+        # only where the test clears FDR_THRESH
+        if r.stars != 'n.s.':
+            ax.text(x[xi], y_br + 0.11 * span, f'{r.mean_lfc_marker:+.2f}',
+                    ha='center', va='bottom', fontsize=8, color='black',
+                    fontweight='bold' if (r.subclass, r.archetype) == LFC_BOLD else 'normal')
+    ax.set_ylim(ymin, y_br + 0.24 * span)
 
     handles = [plt.Rectangle((0, 0), 1, 1, facecolor=MARKER_COLOR, alpha=0.65,
                              label='archetype marker set'),
