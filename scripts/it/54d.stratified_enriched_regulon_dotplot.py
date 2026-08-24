@@ -26,6 +26,13 @@ this figure cannot disagree with them: gray fill = overlap < MASK_MIN_OVERLAP (t
 genes to trust), black outline = the star criterion, nothing drawn where the regulon does not
 exist in that subclass.
 
+The ROW SET is a config field. `rows=None` (the default, and what 55d uses) draws 54b's
+data-selected regulons in 54b's peak-column order; a caller may instead pin an explicit list
+of TFs, drawn in the order given -- 54f/55f do that for the eight IEG regulons, keeping TFs
+the catalogue never called as empty rows so the two catalogues share a row axis. Everything
+else, FRAC_REF included, is held fixed across those variants so dot areas and colours mean the
+same thing in all of them and the figures can be laid beside each other.
+
 Reads:
   local_data/res/it/54.<layer>_stratified_enrichment.tsv    (panel 1, via 54b.load_native)
   local_data/res/it/54.l23set_stratified_enrichment.tsv     (panel 2)
@@ -71,6 +78,8 @@ CFG_YOO25 = dict(
     native_tmpl=os.path.join(RES_DIR, '54.{layer}_stratified_enrichment.tsv'),
     l23set=os.path.join(RES_DIR, '54.l23set_stratified_enrichment.tsv'),
     selection=INPUT_SELECTION,
+    rows=None,             # None = take 54b's selected regulons; a list pins those TFs instead
+    row_label='All enriched regulons',
     out_pdf=OUT_PDF,
 )
 
@@ -91,6 +100,31 @@ def load_module(path, name):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
+
+
+def resolve_rows(cfg, native, l23set, m41b):
+    """(row set, rows the catalogue never called): 54b's selection, or cfg's pinned list."""
+    if cfg['rows'] is None:
+        assert os.path.exists(cfg['selection']), \
+            f'missing {cfg["selection"]}; run the {cfg["tag"]} heatmap script first'
+        return list(pd.read_csv(cfg['selection'], sep='\t')['TF']), []
+
+    # A pinned TF the catalogue never called is KEPT as an empty row rather than dropped: the
+    # row axis is the caller's hypothesis, and "gao25 has no Egr3 regulon at all" is a result,
+    # not a reason to silently shorten the figure -- it is also what keeps the yoo25 and gao25
+    # versions of a pinned figure row-comparable. It is reported here and nowhere else, so it
+    # is printed loudly; an all-absent row set is a typo and stops the run.
+    rows = list(cfg['rows'])
+    in_native, in_l23set = set(native['TF']), set(l23set['TF'])
+    absent = [tf for tf in rows if tf not in in_native | in_l23set]
+    assert len(absent) < len(rows), \
+        f'the {cfg["tag"]} catalogue has no {m41b.SIGN} regulon for ANY pinned row: {rows}'
+    n_nat = sum(tf in in_native for tf in rows)
+    print(f'  pinned rows: {", ".join(rows)}  ({n_nat}/{len(rows)} present natively)')
+    if absent:
+        print(f'  absent from the {cfg["tag"]} catalogue entirely, drawn as empty rows: '
+              f'{", ".join(absent)}')
+    return rows, absent
 
 
 def draw_panel(ax, mats, rows, cols, primed, m41b, m54b, cmap, norm):
@@ -156,9 +190,7 @@ def main(cfg=CFG_YOO25):
     native = native[native['regulation_direction'] == m41b.SIGN]
     l23set = l23set[l23set['regulation_direction'] == m41b.SIGN]
 
-    assert os.path.exists(cfg['selection']), \
-        f'missing {cfg["selection"]}; run the {cfg["tag"]} heatmap script first'
-    rows = list(pd.read_csv(cfg['selection'], sep='\t')['TF'])
+    rows, absent = resolve_rows(cfg, native, l23set, m41b)
     print(f'  {len(rows)} regulons x {len(cols)} subclass-archetype columns, 2 panels')
 
     panels = [("each subclass's own regulons",
@@ -202,13 +234,15 @@ def main(cfg=CFG_YOO25):
                    labelspacing=1.0, borderpad=0.6)
 
     fig.suptitle(
-        f'All enriched regulons ({m41b.SIGN}) — archetype marker enrichment across '
+        f'{cfg["row_label"]} ({m41b.SIGN}) — archetype marker enrichment across '
         f'{cfg["label"]} (expression-stratified, {cfg["tag"]} regulons)\n'
         f'colour = log2 enrichment, area = fraction of the archetype marker set covered; '
         f'outlined = FDR<{m54b.STAR_FDR:g}, log2 enr>{m54b.STAR_LOG2ENR:g}, '
         f'overlap>={m41b.MASK_MIN_OVERLAP}\n'
         f'gray = overlap<{m41b.MASK_MIN_OVERLAP}, too few shared genes to trust; '
-        f'blue = below the matched expectation',
+        f'blue = below the matched expectation'
+        + (f'\nempty row: no {cfg["tag"]} regulon called for {", ".join(absent)} in any '
+           f'subclass — absent from the catalogue, NOT tested and unenriched' if absent else ''),
         fontsize=9)
 
     fig.savefig(cfg['out_pdf'], bbox_inches='tight')

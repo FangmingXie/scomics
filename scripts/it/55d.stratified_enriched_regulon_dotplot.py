@@ -42,6 +42,8 @@ CFG_GAO25 = dict(
     native_tmpl=INPUT_NATIVE_TMPL,
     l23set=INPUT_L23SET,
     selection=INPUT_SELECTION,
+    rows=None,             # 55b's data-selected regulons, as in 54d
+    row_label='All enriched regulons',
     out_pdf=OUT_PDF,)
 
 
