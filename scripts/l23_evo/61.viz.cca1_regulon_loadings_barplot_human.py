@@ -15,11 +15,23 @@ fit on. No sign flip is applied (CCA axis sign is arbitrary; used as-is).
 
 Bars are colored by the regulon's MOUSE archetype: the human TF is mapped to its mouse orthologue
 (data/human_mouse_orthologs.tsv), and the mouse '<Sym>_+/+' regulon is assigned to the archetype
-(A'/B'/C') with the largest log2 odds ratio among rows clearing overlap>=5 AND log2OR>2.0 AND
-FDR<0.05 in the mouse L2/3 regulon-archetype enrichment (script 41; overlap = mouse regulon
-targets ∩ mouse archetype markers). The overlap floor guards against small-N OR inflation. Human
-regulons with no mouse orthologue, no mouse regulon, or no clearing archetype are 'other'.
-Displayed as A/B/C/other.
+(A'/B'/C') with the largest log2 ENRICHMENT among the cells clearing 54b's star criterion in the
+mouse L2/3 stratified enrichment (script 54; overlap = mouse regulon targets ∩ mouse archetype
+markers). Human regulons with no mouse orthologue, no mouse regulon, or no clearing archetype are
+'other'. Displayed as A/B/C/other.
+
+That criterion and the statistic behind it are imported from 54b/41b rather than restated here,
+so this figure's archetype calls cannot disagree with 54d's dot matrix: same expression-stratified
+null, same FDR, same log2-enrichment and overlap floors. It replaces the earlier rule, which took
+the largest Fisher log2 ODDS RATIO from script 41 at overlap>=5 / log2OR>2 / FDR<0.05. 54 exists
+because that odds ratio carries two systematic inflations -- an unstratified null that ignores how
+expression level drives both marker and target membership, and the Haldane-Anscombe correction on
+thin cells -- so the switch is a tightening: on the yoo25 L2/3 catalogue 57 mouse regulons were
+assigned under the old rule and 40 are under this one, with no regulon changing WHICH archetype it
+is assigned to. The 17 that drop out become 'other', which now means "not enriched against an
+expression-matched background" rather than "not enriched against a background of all genes". On
+the human side that moves six regulons -- KLF12, KLF9, MBNL2, SOX5, THRB, ZEB1 -- out of A/B and
+into 'other', leaving 9 A / 12 B / 6 C.
 
 Reads:
   local_data/res/l23_evo/05.varimax_loadings.tsv                (human gene x VX loadings)
@@ -27,7 +39,8 @@ Reads:
   data/human_mouse_orthologs.tsv                                (1:1 ortholog pairs)
   local_data/res/l23_evo/24.orthoaxis_cca_weights_human.tsv     (human VX x CCA weights)
   local_data/res/l23_evo/27.human_wang25_regulon_targets.tsv    (human regulons, +/+ targets)
-  local_data/res/it/41.L2_3_regulon_archetype_enrichment.tsv    (mouse regulon-archetype enrichment)
+  local_data/res/it/54.L2_3_stratified_enrichment.tsv            (mouse regulon-archetype
+      enrichment, expression-stratified; thresholds imported from scripts/it/54b)
 Outputs:
   Two representations, each as an all-regulon figure and an A/C-only 2-panel figure (CCA1 panel
   on top, cross-species target-overlap mirror below):
@@ -40,6 +53,8 @@ Outputs:
 """
 
 import os
+import importlib.util
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -47,7 +62,8 @@ from matplotlib.patches import Patch
 from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(SCRIPTS_DIR)
 
 # --- file paths ---
 OUT_RES_DIR    = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'l23_evo')
@@ -59,7 +75,8 @@ IN_CCA_WEIGHTS = os.path.join(OUT_RES_DIR, '24.orthoaxis_cca_weights_human.tsv')
 IN_CCA_WEIGHTS_M = os.path.join(OUT_RES_DIR, '24.orthoaxis_cca_weights_mouse.tsv')
 IN_HUMAN_REG   = os.path.join(OUT_RES_DIR, '27.human_wang25_regulon_targets.tsv')
 IN_MOUSE_REG   = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '40.yoo25_L2_3_regulon_targets.tsv')
-IN_MOUSE_ENRICH= os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '41.L2_3_regulon_archetype_enrichment.tsv')
+IN_MOUSE_ENRICH= os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '54.L2_3_stratified_enrichment.tsv')
+SCRIPT_54B     = os.path.join(SCRIPTS_DIR, 'it', '54b.stratified_enriched_regulon_heatmap.py')
 # Both representations are produced: 'bar' (per-regulon mean loading) and 'box' (per-gene loading
 # distribution). full = all regulons (single panel); AC = A/C only (2 panels + overlap).
 OUT_PDF_BAR    = os.path.join(OUT_FIG_DIR, '61.cca1_regulon_loadings_barplot_human.pdf')
@@ -76,14 +93,20 @@ REG_DIRECTION  = '_+/+'   # activating regulons only
 HUMAN_VX_COLS  = ['VX2', 'VX6', 'VX7', 'VX8', 'VX9', 'VX10']
 MOUSE_VX_COLS  = ['VX1', 'VX2', 'VX6', 'VX7', 'VX8', 'VX10']
 CCA_AXIS       = 'CCA1'
-# Mouse archetype enrichment significance (matches script 42/44 thresholds), plus a minimum
-# overlap so small-N regulons aren't assigned on an inflated OR / knife-edge FDR. 'overlap' is
-# the count of genes shared between the MOUSE regulon's targets and the MOUSE archetype's marker
-# set (script 41, both restricted to the mouse expression universe). log2OR/FDR alone don't fix
-# small-N inflation (e.g. NFIA: 4-gene overlap yet FDR 3e-4); the overlap count does.
-LOG2OR_THRESH  = 2.0
-FDR_THRESH     = 0.05
-MIN_OVERLAP    = 5
+# Mouse archetype enrichment significance: 54b's star criterion, imported rather than restated
+# so this script cannot drift from 54d (fdr_strat < STAR_FDR AND log2_enr > STAR_LOG2ENR AND
+# overlap >= MASK_MIN_OVERLAP). 'overlap' is the count of genes shared between the MOUSE
+# regulon's targets and the MOUSE archetype's marker set (script 54, both restricted to the
+# mouse expression universe); the overlap floor is what keeps a knife-edge FDR on a handful of
+# shared genes from assigning an archetype (e.g. NFIA: 4-gene overlap yet FDR 3e-4).
+def load_module(path, name):
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+M54B = load_module(SCRIPT_54B, 'script54b')
 # Only plot regulons with at least this many target genes among the human HVGs (i.e. carrying a
 # CCA1 loading), so each bar's mean rests on enough genes to be meaningful.
 MIN_HVG_TARGETS = 10
@@ -105,7 +128,7 @@ TITLE          = {
 }
 
 
-def criteria_lines(mode, show_log2or):
+def criteria_lines(mode, show_log2enr):
     """Criteria/annotation legend text for the given representation (thresholds interpolated)."""
     stat = ('Bar height = mean CCA1 loading across those HVG target genes (sorted by mean)'
             if mode == 'bar' else
@@ -116,12 +139,13 @@ def criteria_lines(mode, show_log2or):
         f'Plotted only if ≥{MIN_HVG_TARGETS} target genes are human HVGs (i.e. carry a CCA1 loading)',
         stat,
         "Color = mouse archetype of the orthologous TF's mouse regulon, if it clears",
-        f'    overlap≥{MIN_OVERLAP} AND log2OR>{LOG2OR_THRESH:g} AND FDR<{FDR_THRESH:g} (mouse enrichment, script 41);',
+        f'    overlap≥{M54B.MASK_MIN_OVERLAP} AND log2 enr>{M54B.STAR_LOG2ENR:g} AND '
+        f'FDR<{M54B.STAR_FDR:g} (script 54, expression-stratified);',
         "    otherwise 'other'.  overlap = mouse regulon targets ∩ mouse archetype markers",
         f'{tip} = HVG target genes with a loading / total target genes in the regulon',
     ]
-    if show_log2or:
-        lines.append('bold label at bar base = mouse log2 OR of the assigned archetype')
+    if show_log2enr:
+        lines.append('bold label at bar base = mouse log2 enrichment of the assigned archetype')
     return lines
 
 os.makedirs(OUT_FIG_DIR, exist_ok=True)
@@ -173,19 +197,25 @@ print(f'Unfiltered {REG_DIRECTION} human regulons: {len(REGULONS)}')
 
 # --- mouse archetype assignment per regulon (top significant archetype, or 'other') ---
 menr = pd.read_csv(IN_MOUSE_ENRICH, sep='\t')
-msig = menr[(menr['overlap'] >= MIN_OVERLAP) &
-            (menr['log2_or'] > LOG2OR_THRESH) & (menr['fdr'] < FDR_THRESH)]
+msig = menr[M54B.starred(menr)]
+print(f'Mouse L2/3 stratified enrichment: {len(msig)} of {len(menr)} cells clear the star '
+      f'criterion (overlap>={M54B.MASK_MIN_OVERLAP}, log2 enr>{M54B.STAR_LOG2ENR:g}, '
+      f'FDR<{M54B.STAR_FDR:g}); {msig["regulon"].nunique()} regulons assignable')
 
 
 def assign_archetype(mouse_key):
-    """Return (display letter, mouse log2 OR) for the top clearing archetype, else ('other', nan)."""
+    """(display letter, mouse log2 enrichment) for the top clearing archetype, else ('other', nan).
+
+    Ranked by log2_enr, the same quantity 54d colours its dots by -- so a regulon coloured A here
+    is a regulon whose darkest starred dot in 54d's native L2/3 block sits in column A'.
+    """
     if mouse_key is None:
         return 'other', float('nan')
     rows = msig[msig['regulon'] == mouse_key]
     if rows.empty:
         return 'other', float('nan')
-    top = rows.sort_values('log2_or', ascending=False).iloc[0]
-    return top['arch_letter'].rstrip("'"), float(top['log2_or'])   # A' -> A, B' -> B, C' -> C
+    top = rows.sort_values('log2_enr', ascending=False).iloc[0]
+    return top['arch_letter'].rstrip("'"), float(top['log2_enr'])   # A' -> A, B' -> B, C' -> C
 
 
 # --- per-regulon CCA1 loading distribution over present targets + archetype color ---
@@ -193,15 +223,15 @@ rows = []
 for r in REGULONS:
     tgs = targets(hreg, r['human'])
     present = [g for g in tgs if g in cca1.index]
-    arch, arch_or = assign_archetype(r['mouse'])
+    arch, arch_enr = assign_archetype(r['mouse'])
     if len(present) < MIN_HVG_TARGETS:
         print(f"  {r['name']}: {len(present)}/{len(tgs)} HVG targets < {MIN_HVG_TARGETS} — skipped  (arch {arch})")
         continue
     loadings = cca1.loc[present].values
-    print(f"  {r['name']}: {len(present)}/{len(tgs)} targets used, median CCA1 = {np.median(loadings):.4f}  (arch {arch}, log2OR {arch_or:.2f})")
+    print(f"  {r['name']}: {len(present)}/{len(tgs)} targets used, median CCA1 = {np.median(loadings):.4f}  (arch {arch}, log2 enr {arch_enr:.2f})")
     rows.append({'name': r['name'], 'loadings': loadings, 'median_loading': float(np.median(loadings)),
                  'mean_loading': float(np.mean(loadings)),
-                 'n_present': len(present), 'n_total': len(tgs), 'arch': arch, 'log2or': arch_or,
+                 'n_present': len(present), 'n_total': len(tgs), 'arch': arch, 'log2enr': arch_enr,
                  'human': r['human'], 'mouse': r['mouse']})
 
 bar = pd.DataFrame(rows)
@@ -210,12 +240,12 @@ bar = pd.DataFrame(rows)
 plt.rcParams['pdf.fonttype'] = 42   # editable vector text
 
 
-def _draw_cca1_panel(ax, bar_df, mode, annot_fs, show_log2or, criteria_fs, label_fs=None):
+def _draw_cca1_panel(ax, bar_df, mode, annot_fs, show_log2enr, criteria_fs, label_fs=None):
     """Draw the per-regulon CCA1 loading panel (colored by archetype) onto ax.
 
     mode='bar' -> one bar per regulon at its MEAN loading; mode='box' -> a boxplot of the per-gene
-    loading distribution. label_fs=None hides x tick labels (shared-x top panel). If show_log2or,
-    mark each column base with the mouse archetype log2 OR.
+    loading distribution. label_fs=None hides x tick labels (shared-x top panel). If show_log2enr,
+    mark each column base with the mouse archetype log2 enrichment.
     """
     x = np.arange(len(bar_df))
     sign = bar_df['mean_loading'].values if mode == 'bar' else bar_df['median_loading'].values
@@ -257,9 +287,9 @@ def _draw_cca1_panel(ax, bar_df, mode, annot_fs, show_log2or, criteria_fs, label
         ax.text(xi, yt + (pad if va == 'bottom' else -pad), f'{npres}/{ntot}',
                 ha='center', va=va, fontsize=annot_fs, color='black', rotation=90)
 
-    # mark each column base with the mouse archetype log2 OR (A/C figure)
-    if show_log2or:
-        for xi, lor in enumerate(bar_df['log2or'].values):
+    # mark each column base with the mouse archetype log2 enrichment (A/C figure)
+    if show_log2enr:
+        for xi, lor in enumerate(bar_df['log2enr'].values):
             if not np.isfinite(lor):
                 continue
             va = 'bottom' if sign[xi] >= 0 else 'top'
@@ -274,7 +304,7 @@ def _draw_cca1_panel(ax, bar_df, mode, annot_fs, show_log2or, criteria_fs, label
 
     # criteria / annotation legend (upper-right, below the color legend; that quadrant is empty
     # because columns are sorted so the right side holds the most-negative values)
-    ax.text(0.995, 0.80, '\n'.join(criteria_lines(mode, show_log2or)),
+    ax.text(0.995, 0.80, '\n'.join(criteria_lines(mode, show_log2enr)),
             transform=ax.transAxes, ha='right', va='top',
             fontsize=criteria_fs, family='monospace', linespacing=1.5,
             bbox=dict(boxstyle='round', facecolor='white', edgecolor='0.7', alpha=0.9))
@@ -324,7 +354,7 @@ def draw_full(bar_df, out_pdf, mode, label_fs, annot_fs, width_factor=0.16, crit
     with PdfPages(out_pdf) as pdf:
         fig, ax = plt.subplots(figsize=(max(6.0, width_factor * len(bar_df)), 5.6))
         ax.set_title(TITLE[mode])
-        _draw_cca1_panel(ax, bar_df, mode, annot_fs, show_log2or=False, criteria_fs=criteria_fs,
+        _draw_cca1_panel(ax, bar_df, mode, annot_fs, show_log2enr=False, criteria_fs=criteria_fs,
                          label_fs=label_fs)
         fig.tight_layout()
         pdf.savefig(fig, bbox_inches='tight', dpi=DPI)
@@ -338,7 +368,7 @@ def draw_ac_with_overlap(bar_df, out_pdf, mode, label_fs, annot_fs, width_factor
                                        figsize=(max(6.0, width_factor * len(bar_df)), 8.6),
                                        gridspec_kw={'height_ratios': [3, 2]})
         ax0.set_title(TITLE[mode])
-        _draw_cca1_panel(ax0, bar_df, mode, annot_fs, show_log2or=True, criteria_fs=criteria_fs,
+        _draw_cca1_panel(ax0, bar_df, mode, annot_fs, show_log2enr=True, criteria_fs=criteria_fs,
                          label_fs=label_fs)
         _draw_overlap_mirror(ax1, bar_df, label_fs=label_fs)
         fig.tight_layout()
