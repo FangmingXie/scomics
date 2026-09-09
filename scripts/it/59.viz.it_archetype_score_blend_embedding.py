@@ -42,7 +42,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import matplotlib.patches as mpatches
 import seaborn as sns
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -69,8 +68,8 @@ ARCH_COLORS  = {"A'": 'C0', "B'": 'C1', "C'": 'C2', "D'": 'C3'}
 SCORE_PCTILE = (5, 95)          # per-score clip before rescaling (mirrors 33-36's colour limits)
 PALE_RGB     = np.array(mcolors.to_rgb('#e6e6e6'))   # colour of a cell with no dominant archetype
 MIN_MIX      = 0.12             # floor on the pale->hue mix, so the palest cells still tint
-GAMMA        = 0.7              # <1 lifts middling margins out of the gray
-POINT_SIZE   = 3
+GAMMA        = 0.5              # <1 lifts middling margins out of the gray
+POINT_SIZE   = 10
 FIG_PANEL_W  = 4.4
 FIG_PANEL_H  = 4.8
 DPI          = 300
@@ -141,7 +140,11 @@ def prep(cfg, relabel_by_token):
 
 
 def draw(ax, S):
-    """One layer's panel: blended cells, then the vector archetype overlay and colour key."""
+    """One layer's panel: blended cells, then the vector archetype overlay.
+
+    No colour key: each archetype's colour is identified by the pure hue sitting at its
+    labelled vertex.
+    """
     xp, aa = S['xp'], S['aa']
     ax.scatter(xp[:, 0], xp[:, 1], c=S['rgb'], s=POINT_SIZE, linewidths=0, rasterized=True)
 
@@ -152,13 +155,10 @@ def draw(ax, S):
         ax.annotate(S['relabel'][L], (ax_, ay_), textcoords='offset points', xytext=(5, 5),
                     fontsize=8, fontweight='bold', color='black', zorder=5)
 
-    order = sorted(range(len(S['letters'])), key=lambda k: S['relabel'][S['letters'][k]])
-    ax.legend(handles=[mpatches.Patch(facecolor=S['rgb_by_col'][k], edgecolor='none',
-                                      label=S['relabel'][S['letters'][k]]) for k in order],
-              title='archetype (cells are mixtures;\npale = no dominant archetype)',
-              loc='upper left', fontsize=8, title_fontsize=6, framealpha=0.9)
-
-    ax.set_aspect('equal', adjustable='box')
+    # No equal-aspect here (unlike 33-36): every panel gets the SAME box, so the four layers
+    # are the same size on the page. PC1 and PC2 are therefore not on a common scale within a
+    # panel -- read the shape as a layout, not as true embedding geometry.
+    ax.set_xticks([]); ax.set_yticks([])   # PC units carry no meaning here; the axis labels do
     ax.set_xlabel('PC1')
     ax.set_ylabel('PC2')
     ax.set_title(f'{S["subclass"]}  (n={S["n"]} cells, NOC={len(S["letters"])})')
