@@ -11,21 +11,29 @@ and each panel is a single-quantity readout:
     row 1 of each subclass   d = score_C - score_A   diverging, which flanking archetype wins
     row 2 of each subclass   b = score_B             sequential, how much of the middle archetype
 
-`d` ramps between the A and C archetype colours through neutral grey; `b` ramps from neutral
-grey to the B colour. No simplex normalisation, no margin desaturation, no blending of the two
-channels against each other -- a cell's colour reads off exactly one number, and each row
-carries its own colour bar.
+No simplex normalisation, no margin desaturation, no blending of the two channels against each
+other -- a cell's colour reads off exactly one number, and each row carries its own colour bar.
 
-Colours follow the DISPLAYED primed labels (ARCHETYPE_MAPPING.md), so the diverging ends flip
-between subclasses: L2/3 and L4 are letter reversals (internal A = C', internal C = A') while
-L6IT is identity. That is handled by reading the depth arc, never by hard-coding a direction.
+Two deliberate departures from the usual colour rule:
 
-L5IT is NOC=2 and has no score_C, so its diverging row is `d = score_B - score_A`. Its second
-row still shows `score_B`, but note that means something different there: with only two
-archetypes, score_B is a flanking archetype (A'), not a middle one. Both row labels say so.
+  * Panel colour encodes the CHANNEL, not archetype identity. The diverging axis always runs
+    C0 <-> C2 with C0 on the A' (most superficial) end, and the score_B ramp is always C1. For
+    the NOC=3 subclasses this is identical to the identity palette of ARCHETYPE_MAPPING.md; for
+    L5IT it is not, and that is the point -- its identity palette would draw the same kind of
+    axis in C1 <-> C0 and make its row read as a different kind of plot. Orientation still comes
+    from the depth arc, never hard-coded, so the ends flip correctly: L2/3 and L4 are letter
+    reversals (internal A = C', internal C = A') while L6IT is identity. Archetype identity
+    colours survive only on the black simplex labels.
+  * The score_B ramp is flat neutral grey up to its midpoint and only ramps above it, so the eye
+    picks out where the middle archetype is actually elevated rather than reading a gradient
+    across the whole population.
+
+L5IT is NOC=2 and has no score_C, so its diverging row is `d = score_B - score_A` and it
+contributes only ONE row: with two archetypes, score_B is simply the positive end of that same
+axis, so a score_B row would restate the diverging row.
 
 Everything else matches 61.v2's grid: ages left to right, only that panel's cells drawn, axis
-limits shared across a subclass's row pair, and the P21 archetype simplex (script 62) in black on
+limits shared across a subclass's rows, and the P21 archetype simplex (script 62) in black on
 the P21 panel alone. No recomputation -- the cached 61.v2 / 62 TSVs are read as-is.
 
 Like 61.v2's panels, each channel is rescaled WITHIN each age, so colours are not comparable
@@ -71,11 +79,21 @@ AGE_COL      = 'Age'
 AGES         = ['P6', 'P8', 'P10', 'P12', 'P14', 'P17', 'P21']
 REF_AGE      = 'P21'
 ARCH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']
-# Colour follows the DISPLAYED (primed) label, never the internal key -- ARCHETYPE_MAPPING.md.
+# Colour follows the DISPLAYED (primed) label -- ARCHETYPE_MAPPING.md. Used for the black
+# simplex labels; the PANEL colours below deliberately do NOT follow it (see module docstring).
 ARCH_COLORS  = {"A'": 'C0', "B'": 'C1', "C'": 'C2', "D'": 'C3'}
-NEUTRAL_RGB  = np.array(mcolors.to_rgb('#e6e6e6'))   # d == 0 and b == 0
+NEUTRAL_RGB  = np.array(mcolors.to_rgb('#e6e6e6'))   # d == 0, and b at or below the midpoint
+# Panel colour encodes the CHANNEL, not archetype identity, so every subclass shares one palette:
+# the diverging axis always runs C0 <-> C2 with C0 on the A' (most superficial) end, and the
+# score_B ramp is always C1. Without this, L5IT would draw its diverging axis C1 <-> C0 and read
+# as a different kind of plot from the other three rows.
+DIV_COLOR_SUPERFICIAL = 'C0'      # the A' end of the diverging axis
+DIV_COLOR_DEEP        = 'C2'      # the opposite flanking end
+SEQ_COLOR             = 'C1'      # the score_B ramp
+SUPERFICIAL_LABEL     = "A'"
 DIV_PCTILE   = 95     # |d| percentile that saturates the diverging ramp
 SEQ_PCTILE   = (5, 95)
+SEQ_MIDPOINT = 0.5    # on the rescaled [0,1] scale: at or below this is flat grey
 POINT_SIZE   = 2.5
 KEY_N        = 128    # colour-bar raster resolution
 FIG_PANEL_W  = 2.4
@@ -100,8 +118,13 @@ def diverging_rgb(d_scaled, rgb_neg, rgb_pos):
 
 
 def sequential_rgb(b_scaled, rgb_b):
-    """b in [0,1] -> RGB ramping neutral -> rgb_b."""
-    return NEUTRAL_RGB + (rgb_b[None, :] - NEUTRAL_RGB) * b_scaled[:, None]
+    """b in [0,1] -> RGB. Flat neutral grey up to SEQ_MIDPOINT, then a ramp to rgb_b.
+
+    Only above-midpoint score_B carries colour, so the eye picks out where the middle archetype
+    is actually elevated instead of reading a gradient across the whole population.
+    """
+    t = np.clip((b_scaled - SEQ_MIDPOINT) / (1.0 - SEQ_MIDPOINT), 0.0, 1.0)
+    return NEUTRAL_RGB + (rgb_b[None, :] - NEUTRAL_RGB) * t[:, None]
 
 
 def scale_diverging(d):
@@ -130,7 +153,8 @@ def draw_key(ax, channel):
     else:
         grid = np.linspace(0, 1, KEY_N)
         rgb = sequential_rgb(grid, channel['rgb_b'])
-        ticks, labels = [0, 1], ['low', 'high']
+        ticks = [0, SEQ_MIDPOINT, 1]
+        labels = ['low', 'mid', 'high']
         lo_hi = (0, 1)
     ax.imshow(rgb[None, :, :], origin='lower', aspect='auto',
               extent=[lo_hi[0], lo_hi[1], 0.42, 0.58])
@@ -169,12 +193,14 @@ for cfg in SUBCLASSES:
     if set(relabel) != set(letters):
         raise ValueError(f'{S}: arc-table letters {sorted(relabel)} != score letters {letters}')
 
-    # NOC=3 -> the diverging axis runs between the two flanking archetypes, A and C. NOC=2 has
-    # no middle archetype, so it runs A -> B instead and score_B is a FLANK, not a middle.
+    # NOC=3 -> the diverging axis runs between the two flanking archetypes, A and C, and score_B
+    # is the middle archetype worth its own row. NOC=2 has no middle: the axis runs A -> B, and
+    # score_B is then just the positive end of that same axis, so a score_B row would restate the
+    # diverging row. L5IT therefore contributes ONE row.
     if len(letters) == 3:
-        pos_letter, b_note = 'C', 'middle archetype'
+        pos_letter, has_seq = 'C', True
     elif len(letters) == 2:
-        pos_letter, b_note = 'B', 'flanking archetype (NOC=2, no middle)'
+        pos_letter, has_seq = 'B', False
     else:
         raise ValueError(f'{S}: NOC={len(letters)} is not supported by this figure')
 
@@ -188,36 +214,51 @@ for cfg in SUBCLASSES:
         raise ValueError(f'{S}: {IN_ARCH.format(token=token)} index {list(arch.index)} '
                          f'!= score letters {letters}')
 
-    rgb_neg = np.array(mcolors.to_rgb(ARCH_COLORS[relabel['A']]))
-    rgb_pos = np.array(mcolors.to_rgb(ARCH_COLORS[relabel[pos_letter]]))
-    rgb_b   = np.array(mcolors.to_rgb(ARCH_COLORS[relabel['B']]))
+    # Diverging ends by ROLE, not by archetype identity colour: C0 goes to whichever end is the
+    # most superficial archetype (A'), C2 to the other. This reproduces the NOC=3 palettes exactly
+    # while putting L5IT on the same C0/C2 axis as the rest instead of its identity C1/C0.
+    neg_primed, pos_primed = relabel['A'], relabel[pos_letter]
+    if SUPERFICIAL_LABEL not in (neg_primed, pos_primed):
+        raise ValueError(f'{S}: neither diverging end is {SUPERFICIAL_LABEL} '
+                         f'({neg_primed}, {pos_primed}) -- cannot orient the C0/C2 axis')
+    neg_is_superficial = neg_primed == SUPERFICIAL_LABEL
+    rgb_neg = np.array(mcolors.to_rgb(
+        DIV_COLOR_SUPERFICIAL if neg_is_superficial else DIV_COLOR_DEEP))
+    rgb_pos = np.array(mcolors.to_rgb(
+        DIV_COLOR_DEEP if neg_is_superficial else DIV_COLOR_SUPERFICIAL))
+    rgb_b = np.array(mcolors.to_rgb(SEQ_COLOR))
 
     # Rescale WITHIN each age, matching 61.v2's per-age panel colour.
     d_raw = scores[f'score_{pos_letter}'].values - scores['score_A'].values
-    b_raw = scores['score_B'].values
     rgb_d = np.zeros((len(coords), 3))
-    rgb_b_cells = np.zeros((len(coords), 3))
     for age in AGES:
         m = ages == age
         rgb_d[m] = diverging_rgb(scale_diverging(d_raw[m]), rgb_neg, rgb_pos)
-        rgb_b_cells[m] = sequential_rgb(scale_sequential(b_raw[m]), rgb_b)
 
     shared = dict(subclass=S, letters=letters, relabel=relabel,
                   pcs=coords[['PC1', 'PC2']].values, ages=ages,
                   vertices=arch[['PC1', 'PC2']].values,
                   n_by_age={age: int((ages == age).sum()) for age in AGES})
-    rows.append(dict(shared, kind='diverging', rgb=rgb_d, first_of_pair=True,
+    rows.append(dict(shared, kind='diverging', rgb=rgb_d, show_titles=True,
                      rgb_neg=rgb_neg, rgb_pos=rgb_pos,
-                     neg_label=relabel['A'], pos_label=relabel[pos_letter],
+                     neg_label=neg_primed, pos_label=pos_primed,
                      expr=f'score_{pos_letter} - score_A',
                      row_label=f'{S}\nscore_{pos_letter} - score_A\n'
-                               f'({relabel["A"]} ↔ {relabel[pos_letter]})'))
-    rows.append(dict(shared, kind='sequential', rgb=rgb_b_cells, first_of_pair=False,
-                     rgb_b=rgb_b, expr='score_B',
-                     row_label=f'{S}\nscore_B ({relabel["B"]})'))
-    print(f'  {S:5s} NOC={len(letters)}  diverging: score_{pos_letter} - score_A '
-          f'({relabel["A"]} <-> {relabel[pos_letter]})   sequential: score_B '
-          f'({relabel["B"]}, {b_note})')
+                               f'({neg_primed} ↔ {pos_primed})'))
+    if has_seq:
+        rgb_b_cells = np.zeros((len(coords), 3))
+        b_raw = scores['score_B'].values
+        for age in AGES:
+            m = ages == age
+            rgb_b_cells[m] = sequential_rgb(scale_sequential(b_raw[m]), rgb_b)
+        rows.append(dict(shared, kind='sequential', rgb=rgb_b_cells, show_titles=False,
+                         rgb_b=rgb_b, expr='score_B',
+                         row_label=f'{S}\nscore_B ({relabel["B"]})'))
+    print(f'  {S:5s} NOC={len(letters)}  diverging: score_{pos_letter} - score_A  '
+          f'{neg_primed}={DIV_COLOR_SUPERFICIAL if neg_is_superficial else DIV_COLOR_DEEP} <-> '
+          f'{pos_primed}={DIV_COLOR_DEEP if neg_is_superficial else DIV_COLOR_SUPERFICIAL}'
+          + (f'   sequential: score_B ({relabel["B"]}) = {SEQ_COLOR}' if has_seq
+             else '   sequential: none (NOC=2, score_B is the axis end)'))
 
 # ===================== figure: (subclass x channel) rows x age cols, plus a key column ========
 
@@ -256,7 +297,7 @@ for row, R in enumerate(rows):
         if col == 0:
             ax.set_ylabel(R['row_label'], fontweight='bold', fontsize=8)
         # Age titles head each subclass's row PAIR; the second row inherits the column.
-        if R['first_of_pair']:
+        if R['show_titles']:
             basis = ' (basis)' if age == REF_AGE else ''
             ax.set_title(f'{age}  n={R["n_by_age"][age]}{basis}', fontsize=9)
         sns.despine(ax=ax)
