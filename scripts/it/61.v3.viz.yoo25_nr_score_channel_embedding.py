@@ -8,23 +8,22 @@ three channels at once.
 This figure splits the colour into two channels and gives each its OWN ROW, so nothing is mixed
 and each panel is a single-quantity readout:
 
-    row 1 of each subclass   d = score_C - score_A   diverging, which flanking archetype wins
-    row 2 of each subclass   b = score_B             sequential, how much of the middle archetype
+    row 1 of each subclass   d = score_<other> - score_<A'>   diverging, which flank wins
+    row 2 of each subclass   b = score_B                       sequential, how much of the middle
 
 No simplex normalisation, no margin desaturation, no blending of the two channels against each
 other -- a cell's colour reads off exactly one number, and each row carries its own colour bar.
 
 Two deliberate departures from the usual colour rule:
 
-  * Panel colour encodes the CHANNEL and its SIGN, not archetype identity. Every row is laid out
-    the same way: internal A (d < 0) is C0 on the left of the colour key, the opposite flank
-    (internal C, or internal B at NOC=2) is C2 on the right, and the score_B ramp is C1.
-    The cost is that a given primed archetype no longer keeps one colour across rows -- A' is the
-    C2 end in L2/3 and L4 (letter reversals) but the C0 end in L6IT (identity), because the
-    reversal that the depth arc encodes is exactly what a fixed left/right layout overrides. The
-    key labels both letters (`A (C')`) so the mapping is always on the page, and archetype
-    identity colours survive on the black simplex labels. Read a colour as "which side of the
-    A-to-C axis", never as "which archetype".
+  * Colour is the archetype IDENTITY colour of ARCHETYPE_MAPPING.md -- A' is C0, the opposite
+    flank is C2, score_B is C1 -- so a primed archetype keeps one colour everywhere. Uniform key
+    layout comes instead from orienting the CONTRAST: it is always written
+    `score_<other> - score_<A'>`, which puts the A' end (C0) on the left of every key. The
+    internal letter at that end therefore differs by subclass, so keys label both
+    (`C (A')` means internal C, displayed A'), and the contrast expression differs per row --
+    L2/3 and L4 read score_A - score_C while L6IT reads score_C - score_A, because the depth arc
+    reverses their letters.
   * The score_B ramp is flat neutral grey up to its midpoint and only ramps above it, so the eye
     picks out where the middle archetype is actually elevated rather than reading a gradient
     across the whole population.
@@ -32,6 +31,12 @@ Two deliberate departures from the usual colour rule:
 L5IT is NOC=2 and has no score_C, so its diverging row is `d = score_B - score_A` and it
 contributes only ONE row: with two archetypes, score_B is simply the positive end of that same
 axis, so a score_B row would restate the diverging row.
+
+PC1 and PC2 are each multiplied by +1 or -1 per subclass so every panel reads the same way
+round: the A' vertex sits LEFT of the opposite flank, and the B' vertex sits BELOW both flanks.
+A PC sign is arbitrary in any PCA, so this changes nothing but the orientation on the page; the
+flips applied are printed at run time and the axis labels show them (`-PC1`, `-PC2`). At NOC=2
+B' is itself a flank, already placed by the x rule, so no y flip is applied.
 
 Everything else matches 61.v2's grid: ages left to right, only that panel's cells drawn, axis
 limits shared across a subclass's rows, and the P21 archetype simplex (script 62) in black on
@@ -86,13 +91,13 @@ ARCH_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']
 # simplex labels; the PANEL colours below deliberately do NOT follow it (see module docstring).
 ARCH_COLORS  = {"A'": 'C0', "B'": 'C1', "C'": 'C2', "D'": 'C3'}
 NEUTRAL_RGB  = np.array(mcolors.to_rgb('#e6e6e6'))   # d == 0, and b at or below the midpoint
-# Panel colour encodes the CHANNEL, not archetype identity, so every subclass shares one palette
-# laid out the same way: internal A (the negative end of d) is always C0 on the LEFT of the key,
-# the opposite flank -- internal C, or internal B at NOC=2 -- is always C2 on the RIGHT, and the
-# score_B ramp is always C1.
-DIV_COLOR_NEG = 'C0'      # internal A: negative end of d, left of the colour key
-DIV_COLOR_POS = 'C2'      # internal C (or B at NOC=2): positive end of d, right of the key
-SEQ_COLOR     = 'C1'      # the score_B ramp
+# Colour is the archetype IDENTITY colour of ARCHETYPE_MAPPING.md: A' is C0, the opposite flank
+# is C2, score_B is C1. The diverging CONTRAST is then oriented A'-negative, so C0 lands on the
+# left of every colour key without reversing any key axis.
+DIV_COLOR_SUPERFICIAL = 'C0'      # the A' flank -- identity colour, and always the key's left end
+DIV_COLOR_DEEP        = 'C2'      # the opposite flank -- always the key's right end
+SEQ_COLOR             = 'C1'      # the score_B ramp
+SUPERFICIAL_LABEL     = "A'"
 DIV_PCTILE   = 95     # |d| percentile that saturates the diverging ramp
 SEQ_PCTILE   = (5, 95)
 SEQ_MIDPOINT = 0.5    # on the rescaled [0,1] scale: at or below this is flat grey
@@ -216,37 +221,61 @@ for cfg in SUBCLASSES:
         raise ValueError(f'{S}: {IN_ARCH.format(token=token)} index {list(arch.index)} '
                          f'!= score letters {letters}')
 
-    # Diverging ends are fixed by POSITION on the d axis, identically in every row: internal A
-    # (d < 0) is C0, the opposite flank (d > 0) is C2. Uniform layout is the point -- see the
-    # docstring for what this costs.
-    neg_primed, pos_primed = relabel['A'], relabel[pos_letter]
-    rgb_neg = np.array(mcolors.to_rgb(DIV_COLOR_NEG))
-    rgb_pos = np.array(mcolors.to_rgb(DIV_COLOR_POS))
+    # Colour follows archetype IDENTITY again: the A' flank is C0, the opposite flank is C2.
+    # Orient the contrast so A' sits at the negative end, which puts C0 on the left of every
+    # colour key without having to reverse any key axis.
+    flanks = ['A', pos_letter]
+    primed_flanks = [relabel[L] for L in flanks]
+    if SUPERFICIAL_LABEL not in primed_flanks:
+        raise ValueError(f'{S}: neither flank is {SUPERFICIAL_LABEL} ({primed_flanks}) -- '
+                         f'cannot orient the diverging axis')
+    a_letter = flanks[primed_flanks.index(SUPERFICIAL_LABEL)]        # internal letter of A'
+    o_letter = flanks[1 - primed_flanks.index(SUPERFICIAL_LABEL)]    # the opposite flank
+    rgb_neg = np.array(mcolors.to_rgb(DIV_COLOR_SUPERFICIAL))        # A' end
+    rgb_pos = np.array(mcolors.to_rgb(DIV_COLOR_DEEP))               # opposite flank
     rgb_b = np.array(mcolors.to_rgb(SEQ_COLOR))
 
     # ONE colour scale per row, computed over all ages at once, so panels along a row are
     # directly comparable -- the same colour means the same score anywhere in the row.
-    d_raw = scores[f'score_{pos_letter}'].values - scores['score_A'].values
+    d_raw = scores[f'score_{o_letter}'].values - scores[f'score_{a_letter}'].values
     rgb_d = diverging_rgb(scale_diverging(d_raw), rgb_neg, rgb_pos)
 
+    # --- per-row PC sign flips, so every panel reads the same way round ---
+    # x: the A' vertex must sit LEFT of the opposite flank.
+    # y: the B' vertex must sit BELOW the flanks. Only meaningful when B' is the middle archetype;
+    #    at NOC=2 B' is itself a flank and already placed by the x rule, so y is left alone.
+    vertices = arch[['PC1', 'PC2']].values
+    ia, io = letters.index(a_letter), letters.index(o_letter)
+    sx = -1.0 if vertices[ia, 0] > vertices[io, 0] else 1.0
+    if has_seq:
+        ib = letters.index('B')
+        sy = -1.0 if vertices[ib, 1] > vertices[[ia, io], 1].mean() else 1.0
+    else:
+        sy = 1.0
+    sign = np.array([sx, sy])
+    vertices = vertices * sign
+
     shared = dict(subclass=S, letters=letters, relabel=relabel,
-                  pcs=coords[['PC1', 'PC2']].values, ages=ages,
-                  vertices=arch[['PC1', 'PC2']].values,
+                  pcs=coords[['PC1', 'PC2']].values * sign, ages=ages,
+                  vertices=vertices, sx=sx, sy=sy,
                   n_by_age={age: int((ages == age).sum()) for age in AGES})
+    contrast = f'score_{o_letter} - score_{a_letter}'
     rows.append(dict(shared, kind='diverging', rgb=rgb_d, show_titles=True,
                      rgb_neg=rgb_neg, rgb_pos=rgb_pos,
-                     neg_label=f'A ({neg_primed})', pos_label=f'{pos_letter} ({pos_primed})',
-                     expr=f'score_{pos_letter} - score_A',
-                     row_label=f'{S}\nscore_{pos_letter} - score_A\n'
-                               f'({neg_primed} ↔ {pos_primed})'))
+                     neg_label=f'{a_letter} ({relabel[a_letter]})',
+                     pos_label=f'{o_letter} ({relabel[o_letter]})',
+                     expr=contrast,
+                     row_label=f'{S}\n{contrast}\n'
+                               f'({relabel[a_letter]} ↔ {relabel[o_letter]})'))
     if has_seq:
         rgb_b_cells = sequential_rgb(scale_sequential(scores['score_B'].values), rgb_b)
         rows.append(dict(shared, kind='sequential', rgb=rgb_b_cells, show_titles=False,
                          rgb_b=rgb_b, expr='score_B',
                          row_label=f'{S}\nscore_B ({relabel["B"]})'))
-    print(f'  {S:5s} NOC={len(letters)}  diverging: score_{pos_letter} - score_A  '
-          f'left A ({neg_primed})={DIV_COLOR_NEG} <-> '
-          f'right {pos_letter} ({pos_primed})={DIV_COLOR_POS}'
+    print(f'  {S:5s} NOC={len(letters)}  diverging: {contrast}  '
+          f'left {a_letter} ({relabel[a_letter]})={DIV_COLOR_SUPERFICIAL} <-> '
+          f'right {o_letter} ({relabel[o_letter]})={DIV_COLOR_DEEP}'
+          f'   flips: PC1 x{sx:+.0f}, PC2 x{sy:+.0f}'
           + (f'   sequential: score_B ({relabel["B"]}) = {SEQ_COLOR}' if has_seq
              else '   sequential: none (NOC=2, score_B is the axis end)'))
 
@@ -282,10 +311,12 @@ for row, R in enumerate(rows):
 
         ax.set_xlim(*xlim); ax.set_ylim(*ylim)
         ax.set_xticks([]); ax.set_yticks([])
-        if row == len(rows) - 1:
-            ax.set_xlabel('PC1')
+        # No x-label: it would sit only on the bottom row and report that row's PC1 sign for
+        # every column. The signs live in each row's own label instead.
         if col == 0:
-            ax.set_ylabel(R['row_label'], fontweight='bold', fontsize=8)
+            axes_lbl = ('PC1' if R['sx'] > 0 else '−PC1') + ' , ' + \
+                       ('PC2' if R['sy'] > 0 else '−PC2')
+            ax.set_ylabel(f'{R["row_label"]}\n[{axes_lbl}]', fontweight='bold', fontsize=8)
         # Age titles head each subclass's row PAIR; the second row inherits the column.
         if R['show_titles']:
             basis = ' (basis)' if age == REF_AGE else ''
