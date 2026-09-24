@@ -4,7 +4,13 @@ Three panels, one PDF (editable text):
   A) Per-cell Cux2 expression (log2(1+CP10k)) in L2/3 cells, WT vs Cux2Cre, as boxplots with
      jittered cells behind them. Annotated with n, detection rate, and a two-sided
      Mann-Whitney U p-value.
-  B) Cux2 pseudobulk log2 fold change (Cux2Cre / WT) with a bootstrap 95% CI over cells.
+  B) Cux2 pseudobulk log2 fold change with a bootstrap 95% CI over cells, one bar per dataset:
+     jainlab26 Cux2Cre/WT (the cells of panel A) and morcom26 Null/WT (P26_ENs EN-L2-3-CTX
+     neurons). Same estimator and same CI definition for both, so the bars are comparable --
+     but the cell sets are not built the same way (jainlab26 is label-transferred L2/3 inside
+     the 06 UMAP box; morcom26 uses the authors' own celltype annotation), and the alleles
+     differ: Cux2Cre is a Cre knock-in, Null is a knockout. morcom26 has 3 mice per genotype,
+     so its per-sample means are printed to stdout -- the bootstrap bar is still cell-level.
   C) Volcano over all genes detected in at least MIN_FRAC_CELLS of the cells in either group:
      pseudobulk log2FC against the BH-adjusted Mann-Whitney p-value. Cux2 is marked in red and
      the top TOP_N_LABEL genes by adjusted p-value are labeled.
@@ -13,6 +19,11 @@ Three panels, one PDF (editable text):
      published primed letters through the it_evo/15 depth-arc table and colored by the
      DISPLAYED label (A' -> C0, B' -> C1, C' -> C2), per scripts/ARCHETYPE_MAPPING.md. For L2/3
      the relabel is a reversal: A -> C', B -> B', C -> A'.
+  E) morcom26 per-animal Cux2: one point per mouse (mean CP10k over that mouse's L2/3 cells),
+     three per genotype, with the genotype mean and a two-sided Welch t-test. This is the
+     decomposition of panel B's morcom26 bar into the replicates it is built from, and it is
+     the only test here with genuine between-animal replication -- the cell-level p-values
+     everywhere else cannot see mouse-to-mouse variation.
 
 The WT and Cux2Cre mice are of different sex, so EXCLUDE_GENES (chrY, Xist, Tsix) is
 dropped before testing — those are the strongest hits in the comparison and have nothing to do with the
@@ -32,9 +43,11 @@ Reads:
   local_data/res/cux2cre/00_v2.jainlab26_{cux2cre,wt}_labeled.h5ad   (UMAP filter)
   local_data/res/it/34.follow.two_L23_archetype_markers.tsv          (archetype marker sets)
   local_data/res/it_evo/15.mouse_IT_joint_archetype_arc_order.tsv    (primed relabel)
+  links/cux2cre/morcom26/P26_ENs.h5ad                                (morcom26 WT vs Null)
 Outputs:
   local_data/fig/cux2cre/08.l23_cux2_expr_log2fc.pdf
   local_data/res/cux2cre/08.l23_de_wt_vs_cux2cre.tsv
+  local_data/res/cux2cre/08.morcom26_l23_per_animal.tsv
 """
 
 import os
@@ -42,7 +55,7 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 import scipy.sparse as sp
-from scipy.stats import mannwhitneyu
+from scipy.stats import mannwhitneyu, ttest_ind
 import matplotlib.pyplot as plt
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -53,8 +66,10 @@ INPUT_CUX2CRE_00  = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'cux2cre', '
 INPUT_WT_00       = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'cux2cre', '00_v2.jainlab26_wt_labeled.h5ad')
 INPUT_MARKERS     = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it', '34.follow.two_L23_archetype_markers.tsv')
 INPUT_ARC_ORDER   = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'it_evo', '15.mouse_IT_joint_archetype_arc_order.tsv')
+INPUT_MORCOM26    = os.path.join(PROJECT_ROOT, 'links', 'cux2cre', 'morcom26', 'P26_ENs.h5ad')
 OUT_FIG           = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'cux2cre', '08.l23_cux2_expr_log2fc.pdf')
 OUT_TSV           = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'cux2cre', '08.l23_de_wt_vs_cux2cre.tsv')
+OUT_TSV_ANIMAL    = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'cux2cre', '08.morcom26_l23_per_animal.tsv')
 
 GENE           = 'Cux2'
 UMAP_X_MAX     = -4      # same spatial filter as 06
@@ -79,6 +94,12 @@ COLOR_CUX2CRE  = '#C44E52'
 COLOR_SIG      = '#55A868'
 LOCUS_GENE     = 'Gm52785'   # transcript adjacent to Cux2 in the reference; marked in both volcanoes
 COLOR_LOCUS    = '#8172B2'
+COLOR_NULL     = '#DD8452'   # morcom26 Null, matching scripts/morcom26/23
+# morcom26 (P26_ENs): neocortical L2/3 excitatory neurons only. The other EN-L2-3-* labels are
+# entorhinal / piriform / postpiriform and EN-L2-mix is unresolved, so none of them belong here.
+MORCOM_CELLTYPE  = 'EN-L2-3-CTX'
+MORCOM_CELLTYPE_COL, MORCOM_COND_COL, MORCOM_SAMPLE_COL = 'celltype', 'Condition', 'samples'
+MORCOM_REF, MORCOM_ALT = 'WT', 'Null'
 ARC_TOKEN      = 'L23'   # key into the it_evo/15 depth-arc table
 # archetype_1 -> A, archetype_2 -> B, ... ; the primed relabel comes from INPUT_ARC_ORDER.
 ARCHETYPE_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F']
@@ -221,22 +242,69 @@ print(f'{GENE}: wt mean={gene_log_wt.mean():.3f} (det {det_wt:.1%}, n={len(gene_
 print(f'{GENE}: log2FC={gene_fc:.3f}  p={gene_p:.3g}  padj={gene_padj:.3g}  |  '
       f'mean CP10k — wt: {mean_wt[gi]:.2f}, cux2cre: {mean_cux2cre[gi]:.2f}')
 
-# --- Bootstrap CI on the GENE fold change (resampling cells within each group) ---
-def _log2fc_gene(a_wt, a_cux2cre):
-    return np.log2((a_cux2cre.mean() + PSEUDOCOUNT) / (a_wt.mean() + PSEUDOCOUNT))
+# --- Fold change + bootstrap CI, resampling cells to each group's own size ---
+def _log2fc_ci(ref, alt, seed=0):
+    """Pseudobulk log2(alt/ref) on CP10k values, with a percentile bootstrap CI over cells."""
+    point = np.log2((alt.mean() + PSEUDOCOUNT) / (ref.mean() + PSEUDOCOUNT))
+    rng = np.random.default_rng(seed)
+    boot = np.array([np.log2((rng.choice(alt, len(alt), replace=True).mean() + PSEUDOCOUNT) /
+                             (rng.choice(ref, len(ref), replace=True).mean() + PSEUDOCOUNT))
+                     for _ in range(N_BOOT)])
+    lo, hi = np.percentile(boot, [2.5, 97.5])
+    return point, lo, hi
 
-rng = np.random.default_rng(0)
-boot = np.array([_log2fc_gene(rng.choice(cp10k_wt[:, gi],      len(cp10k_wt),      replace=True),
-                              rng.choice(cp10k_cux2cre[:, gi], len(cp10k_cux2cre), replace=True))
-                 for _ in range(N_BOOT)])
-ci_lo, ci_hi = np.percentile(boot, [2.5, 97.5])
+
+_, ci_lo, ci_hi = _log2fc_ci(cp10k_wt[:, gi], cp10k_cux2cre[:, gi])
 print(f'{GENE} log2FC bootstrap 95% CI: [{ci_lo:.3f}, {ci_hi:.3f}]')
+
+# --- morcom26 WT vs Null, same gene, same estimator ---
+print(f'Loading morcom26 ({MORCOM_CELLTYPE} only)...')
+mor = ad.read_h5ad(INPUT_MORCOM26)
+if GENE not in mor.var_names:
+    raise ValueError(f'Gene {GENE} not found in {INPUT_MORCOM26}')
+mor = mor[mor.obs[MORCOM_CELLTYPE_COL] == MORCOM_CELLTYPE]
+if mor.n_obs == 0:
+    raise ValueError(f'celltype {MORCOM_CELLTYPE} absent from {INPUT_MORCOM26}')
+
+# Only the gene column and the per-cell depths are needed — never densify the full matrix.
+mor_depths = np.asarray(mor.X.sum(axis=1)).ravel().astype(float)
+mor_gene   = np.asarray(mor.X[:, mor.var_names.get_loc(GENE)].todense()).ravel().astype(float)
+mor_cp10k  = mor_gene / mor_depths * 1e4
+mor_cond   = mor.obs[MORCOM_COND_COL].values
+
+missing_cond = {MORCOM_REF, MORCOM_ALT} - set(mor_cond)
+if missing_cond:
+    raise ValueError(f'{MORCOM_COND_COL} lacks {sorted(missing_cond)} in {MORCOM_CELLTYPE}')
+mor_ref = mor_cp10k[mor_cond == MORCOM_REF]
+mor_alt = mor_cp10k[mor_cond == MORCOM_ALT]
+print(f'  {MORCOM_CELLTYPE}: {len(mor_ref)} {MORCOM_REF} cells, {len(mor_alt)} {MORCOM_ALT} cells')
+
+mor_fc, mor_lo, mor_hi = _log2fc_ci(mor_ref, mor_alt)
+print(f'{GENE} morcom26 log2FC ({MORCOM_ALT}/{MORCOM_REF}): {mor_fc:.3f}  '
+      f'[95% CI {mor_lo:.3f}, {mor_hi:.3f}]  |  mean CP10k — {MORCOM_REF}: {mor_ref.mean():.2f}, '
+      f'{MORCOM_ALT}: {mor_alt.mean():.2f}')
+
+# morcom26 has 3 mice per genotype: report the per-animal means the cell-level bar cannot show.
+per_sample = pd.DataFrame({'sample': mor.obs[MORCOM_SAMPLE_COL].values,
+                           'condition': mor_cond, 'cp10k': mor_cp10k})
+per_sample = (per_sample.groupby(['condition', 'sample'], observed=True)['cp10k']
+              .agg(['size', 'mean']).reset_index().sort_values(['condition', 'sample']))
+print(f'  per-mouse mean CP10k ({GENE}):')
+print(per_sample.to_string(index=False))
+per_sample.to_csv(OUT_TSV_ANIMAL, sep='\t', index=False)
+print(f'  Saved → {OUT_TSV_ANIMAL}')
+anim_ref = per_sample.loc[per_sample['condition'] == MORCOM_REF, 'mean'].values
+anim_alt = per_sample.loc[per_sample['condition'] == MORCOM_ALT, 'mean'].values
+anim_fc = np.log2((anim_alt.mean() + PSEUDOCOUNT) / (anim_ref.mean() + PSEUDOCOUNT))
+anim_t, anim_p = ttest_ind(anim_ref, anim_alt, equal_var=False)
+print(f'  animal-level log2FC (mean of per-mouse means): {anim_fc:.3f}  '
+      f'(n = {len(anim_ref)} vs {len(anim_alt)} mice)  Welch t-test p = {anim_p:.3g}')
 
 # --- Figure ---
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype']  = 42
 
-fig, axes = plt.subplots(1, 4, figsize=(17, 4.2), gridspec_kw={'width_ratios': [1.2, 0.75, 1.6, 1.6]})
+fig, axes = plt.subplots(1, 5, figsize=(21, 4.4), gridspec_kw={'width_ratios': [1.2, 1.05, 1.6, 1.6, 1.0]})
 
 # Panel A: boxplot of per-cell GENE expression
 ax = axes[0]
@@ -267,15 +335,24 @@ ax.spines[['top', 'right']].set_visible(False)
 # Panel B: GENE log2 fold change
 ax = axes[1]
 ax.axhline(0, color='gray', linewidth=0.8, linestyle='--', zorder=1)
-ax.bar([0], [gene_fc], width=0.5, color=COLOR_CUX2CRE, alpha=0.85, zorder=2)
-ax.errorbar([0], [gene_fc], yerr=[[gene_fc - ci_lo], [ci_hi - gene_fc]],
-            fmt='none', ecolor='black', capsize=4, linewidth=1.2, zorder=3)
-ax.text(0, ci_lo - 0.012, f'{gene_fc:.2f}', ha='center', va='top', fontsize=9)
-ax.set_xticks([0])
-ax.set_xticklabels([f'{GENE}'])
-ax.set_xlim(-0.6, 0.6)
-ax.set_ylim(min(ci_lo * 1.8, -0.05), max(ci_hi * 1.8, 0.05))
-ax.set_ylabel('log$_2$FC  (Cux2Cre / WT)')
+bars = [
+    (gene_fc, ci_lo, ci_hi, COLOR_CUX2CRE,
+     f'Cux2Cre / WT\njainlab26\n1 mouse each'),
+    (mor_fc, mor_lo, mor_hi, COLOR_NULL,
+     f'{MORCOM_ALT} / {MORCOM_REF}\nmorcom26\n3 mice each'),
+]
+for pos, (fc, lo, hi, color, _) in enumerate(bars):
+    ax.bar([pos], [fc], width=0.55, color=color, alpha=0.85, zorder=2)
+    ax.errorbar([pos], [fc], yerr=[[fc - lo], [hi - fc]],
+                fmt='none', ecolor='black', capsize=4, linewidth=1.2, zorder=3)
+    ax.text(pos, lo - 0.012, f'{fc:.2f}', ha='center', va='top', fontsize=9)
+ax.set_xticks(range(len(bars)))
+ax.set_xticklabels([lab for *_, lab in bars], fontsize=8)
+ax.set_xlim(-0.7, len(bars) - 0.3)
+lo_all = min(lo for _, lo, _, _, _ in bars)
+hi_all = max(hi for _, _, hi, _, _ in bars)
+ax.set_ylim(min(lo_all * 1.35, -0.05), max(hi_all * 1.35, 0.05))
+ax.set_ylabel('log$_2$FC  (mutant / WT)')
 ax.set_title(f'{GENE} fold change in L2/3', fontsize=10)
 ax.text(0.5, 0.015, f'error bar: bootstrap 95% CI\n({N_BOOT} resamples of cells)',
         transform=ax.transAxes, ha='center', va='bottom', fontsize=7, color='dimgray')
@@ -368,6 +445,33 @@ ax.set_title('Same volcano, colored by L2/3 archetype marker set\n'
              '(scripts/it 34 markers; primed labels from it_evo/15)', fontsize=9)
 ax.set_xlim(axes[2].get_xlim())   # same frame as panel C, which the gene labels widened
 ax.set_ylim(axes[2].get_ylim())
+
+# Panel E: morcom26 per-animal means — the replicates behind panel B's second bar
+ax = axes[4]
+anim_groups = [(MORCOM_REF, anim_ref, COLOR_WT), (MORCOM_ALT, anim_alt, COLOR_NULL)]
+rng_anim = np.random.default_rng(0)
+for pos, (label, vals, color) in enumerate(anim_groups):
+    ax.hlines(vals.mean(), pos - 0.25, pos + 0.25, color=color, linewidth=2.0, zorder=3)
+    ax.errorbar([pos], [vals.mean()], yerr=[vals.std(ddof=1)], fmt='none',
+                ecolor=color, capsize=5, linewidth=1.2, zorder=3)
+    ax.scatter(pos + rng_anim.uniform(-0.1, 0.1, len(vals)), vals, s=42, color=color,
+               edgecolor='white', linewidths=0.8, zorder=4)
+
+y_lo, y_hi = min(anim_ref.min(), anim_alt.min()), max(anim_ref.max(), anim_alt.max())
+pad = (y_hi - y_lo) * 0.18
+bar_y = y_hi + pad * 0.7
+ax.plot([0, 0, 1, 1], [bar_y, bar_y + pad * 0.18, bar_y + pad * 0.18, bar_y],
+        color='black', linewidth=1.0)
+ax.text(0.5, bar_y + pad * 0.22, f'Welch $t$-test $p$ = {anim_p:.2f}',
+        ha='center', va='bottom', fontsize=8)
+ax.set_xticks([0, 1])
+ax.set_xticklabels([f'{label}\nn = {len(vals)} mice' for label, vals, _ in anim_groups])
+ax.set_xlim(-0.6, 1.6)
+ax.set_ylim(y_lo - pad, y_hi + pad * 1.5)
+ax.set_ylabel(f'{GENE} mean CP10k per mouse')
+ax.set_title(f'morcom26 per-animal {GENE} in {MORCOM_CELLTYPE}\n'
+             f'animal-level log$_2$FC = {anim_fc:+.2f}', fontsize=9)
+ax.spines[['top', 'right']].set_visible(False)
 
 fig.tight_layout()
 fig.savefig(OUT_FIG, bbox_inches='tight', dpi=300)
