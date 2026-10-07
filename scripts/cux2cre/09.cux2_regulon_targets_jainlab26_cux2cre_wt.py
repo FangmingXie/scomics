@@ -34,6 +34,11 @@ is the jainlab26 Cux2Cre/WT comparison from script 08.
      Cux2 function these genes should sit ABOVE zero. Box colours are black (all targets) then
      C0/C1/C2 for A'/B'/C', matching panels A and B.
 
+  D) The same boxplot, but the groups are the FULL archetype marker sets -- every A', B' and C'
+     marker, whether or not it is a Cux2 target. These three sets are disjoint, so unlike panel C
+     a test across them is legitimate (Kruskal-Wallis). Panel C asks what the regulon does; panel
+     D asks whether the Cre allele moves the archetype programmes at all.
+
 Archetype letters are the published primed labels throughout: the internal PCHA letters
 (archetype_1/2/3 = A/B/C) are relabelled through the it_evo/15 depth-arc table, which for L2/3 is
 the reversal A -> C', B -> B', C -> A'. Colour follows the DISPLAYED label (A' -> C0, B' -> C1,
@@ -47,7 +52,7 @@ Reads:
   local_data/res/it/54.L2_3_stratified_enrichment.tsv         (panel A)
   local_data/res/it/40.yoo25_L2_3_regulon_targets.tsv         (regulon membership)
   local_data/res/it/34.follow.two_L23_archetype_scores.tsv    (archetype assignment)
-  local_data/res/it/34.follow.two_L23_archetype_markers.tsv   (panel C gene set)
+  local_data/res/it/34.follow.two_L23_archetype_markers.tsv   (panels C and D gene sets)
   local_data/res/it_evo/15.mouse_IT_joint_archetype_arc_order.tsv  (primed relabel)
   links/it/superdupermegaRNA_yoo25_IT_P21.h5ad                (panel B expression)
   local_data/res/cux2cre/04_v2.l23_jainlab26_{cux2cre,wt}_labeled.h5ad  (panel C cells)
@@ -55,7 +60,7 @@ Reads:
   local_data/res/cux2cre/08.l23_de_wt_vs_cux2cre.tsv          (cross-check only)
 Outputs:
   local_data/fig/cux2cre/09.cux2_regulon_targets.pdf
-  local_data/res/cux2cre/09.cux2_regulon_target_log2fc.tsv    (all targets, recomputed)
+  local_data/res/cux2cre/09.l23_gene_log2fc.tsv               (targets + markers, recomputed)
 """
 
 import os
@@ -81,7 +86,7 @@ INPUT_CUX2CRE_00  = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'cux2cre', '
 INPUT_WT_00       = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'cux2cre', '00_v2.jainlab26_wt_labeled.h5ad')
 INPUT_DE        = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'cux2cre', '08.l23_de_wt_vs_cux2cre.tsv')
 OUT_FIG         = os.path.join(PROJECT_ROOT, 'local_data', 'fig', 'cux2cre', '09.cux2_regulon_targets.pdf')
-OUT_TSV         = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'cux2cre', '09.cux2_regulon_target_log2fc.tsv')
+OUT_TSV         = os.path.join(PROJECT_ROOT, 'local_data', 'res', 'cux2cre', '09.l23_gene_log2fc.tsv')
 
 REGULON   = 'Cux2_-/+'
 ARC_TOKEN = 'L23'
@@ -250,14 +255,36 @@ print('Loading jainlab26 L2/3 h5ads...')
 cux2cre = _umap_filter(ad.read_h5ad(INPUT_CUX2CRE_L23), INPUT_CUX2CRE_00)
 wt      = _umap_filter(ad.read_h5ad(INPUT_WT_L23),      INPUT_WT_00)
 print(f'  after the 00_v2 UMAP box — wt: {wt.n_obs} cells  |  cux2cre: {cux2cre.n_obs} cells')
-absent = [g for g in targets if g not in wt.var_names]
-if absent:
-    raise ValueError(f'targets absent from the jainlab26 h5ads: {absent}')
+# One recomputation covering every gene either panel needs: the regulon's targets (panel C)
+# and the full archetype marker sets (panel D).
+#
+# The marker sets come from cheng22/yoo25, whose reference predates jainlab26's mm39 symbols, so
+# a handful of markers have been renamed and simply cannot be measured here (Arntl, March1,
+# Nrd1, ...). Those are DROPPED with a report — no symbol remapping is attempted, because no
+# authoritative mapping ships with this project and guessing would silently invent data. A
+# missing TARGET is still a hard error: panel C's gene set must match panel A's exactly.
+absent_targets = [g for g in targets if g not in wt.var_names]
+if absent_targets:
+    raise ValueError(f'regulon targets absent from the jainlab26 h5ads: {absent_targets}')
 
-mean_wt,      frac_wt      = _gene_cp10k_stats(wt,      targets)
-mean_cux2cre, frac_cux2cre = _gene_cp10k_stats(cux2cre, targets)
+measured_sets = {}
+for lab in primed_order:
+    kept = sorted(g for g in marker_sets[lab] if g in wt.var_names)
+    dropped = sorted(set(marker_sets[lab]) - set(kept))
+    if dropped:
+        print(f'  NOTE: {lab} — {len(dropped)}/{len(marker_sets[lab])} markers absent from the '
+              f'jainlab26 annotation, dropped: {dropped}')
+    measured_sets[lab] = kept
+
+gene_union = sorted(set(targets).union(*measured_sets.values()))
+print(f'  recomputing log2FC for {len(gene_union)} genes '
+      f'({len(targets)} targets + {sum(len(v) for v in measured_sets.values())} measurable '
+      f'markers, deduplicated)')
+
+mean_wt,      frac_wt      = _gene_cp10k_stats(wt,      gene_union)
+mean_cux2cre, frac_cux2cre = _gene_cp10k_stats(cux2cre, gene_union)
 fc = pd.DataFrame({
-    'gene':                   targets,
+    'gene':                   gene_union,
     'mean_cp10k_wt':          mean_wt,
     'mean_cp10k_cux2cre':     mean_cux2cre,
     'frac_detected_wt':       frac_wt,
@@ -265,23 +292,25 @@ fc = pd.DataFrame({
     DE_LOG2FC_COL: np.log2((mean_cux2cre + PSEUDOCOUNT) / (mean_wt + PSEUDOCOUNT)),
 }).set_index('gene')
 fc['low_detection'] = (fc['frac_detected_wt'] < MIN_FRAC_CELLS) & (fc['frac_detected_cux2cre'] < MIN_FRAC_CELLS)
+fc['is_regulon_target'] = fc.index.isin(targets)
 for lab in primed_order:
-    fc.loc[fc.index.isin(overlap_sets[lab]), 'archetype_overlap'] = lab
+    fc.loc[fc.index.isin(measured_sets[lab]), 'archetype_marker'] = lab
 
 # The estimator must be 08's, so every gene 08 tested has to come back identical.
 de = pd.read_csv(INPUT_DE, sep='\t', index_col=0)
-shared = [g for g in targets if g in de.index]
+shared = [g for g in gene_union if g in de.index]
 delta = np.abs(fc.loc[shared, DE_LOG2FC_COL].values - de.loc[shared, DE_LOG2FC_COL].values).max()
 if delta > RECOMPUTE_TOL:
     raise ValueError(f'recomputed log2FC disagrees with {os.path.basename(INPUT_DE)} by {delta:.3g} '
                      f'(tolerance {RECOMPUTE_TOL:g}) — the two estimators have diverged')
-print(f'  cross-check vs script 08 on {len(shared)}/{len(targets)} genes: max |difference| = {delta:.2g}')
+print(f'  cross-check vs script 08 on {len(shared)}/{len(gene_union)} genes: max |difference| = {delta:.2g}')
 recovered = sorted(set(targets) - set(de.index))
 print(f'  recovered {len(recovered)} target(s) that 08 filtered out: {recovered}')
-if fc['low_detection'].any():
-    print(f'  below the {MIN_FRAC_CELLS:.0%} detection floor in both genotypes (drawn open):')
-    print(fc.loc[fc['low_detection'], ['frac_detected_wt', 'frac_detected_cux2cre',
-                                       DE_LOG2FC_COL]].to_string())
+print(f'  recovered {len(set(gene_union) - set(de.index))} gene(s) overall below 08\'s filter')
+n_low = int(fc['low_detection'].sum())
+print(f'  {n_low} gene(s) below the {MIN_FRAC_CELLS:.0%} detection floor in both genotypes '
+      f'(drawn open), of which {int(fc.loc[fc["low_detection"], "is_regulon_target"].sum())} '
+      f'are regulon targets')
 
 fc.sort_values(DE_LOG2FC_COL).to_csv(OUT_TSV, sep='\t')
 print(f'Saved → {OUT_TSV}')
@@ -291,18 +320,24 @@ panel_c = [('all\ntargets', targets, COLOR_TARGET)]
 for lab in primed_order:
     panel_c.append((f'{lab}\noverlap', overlap_sets[lab], ARCH_COLORS[lab]))
 
-print('Panel C — log2FC (Cux2Cre / WT) by group:')
-for lab, genes, _ in panel_c:
-    vals = fc.loc[genes, DE_LOG2FC_COL].values
-    print(f'  {lab.replace(chr(10), " "):16s} n={len(vals):3d}  median={np.median(vals):+.4f}  '
-          f'mean={vals.mean():+.4f}  up={int((vals > 0).sum())}')
+# Panel D groups: the full archetype marker sets, disjoint, target membership ignored
+panel_d = [(f'{lab}\nmarkers', measured_sets[lab], ARCH_COLORS[lab]) for lab in primed_order]
+kw_d_stat, kw_d_p = kruskal(*[fc.loc[g, DE_LOG2FC_COL].values for _, g, _ in panel_d])
+
+for name, panel in (('C', panel_c), ('D', panel_d)):
+    print(f'Panel {name} — log2FC (Cux2Cre / WT) by group:')
+    for lab, genes, _ in panel:
+        vals = fc.loc[genes, DE_LOG2FC_COL].values
+        print(f'  {lab.replace(chr(10), " "):16s} n={len(vals):4d}  median={np.median(vals):+.4f}  '
+              f'mean={vals.mean():+.4f}  up={int((vals > 0).sum())}')
+print(f'  panel D Kruskal-Wallis across the three disjoint marker sets: p = {kw_d_p:.3g}')
 
 # --- Figure ---
 plt.rcParams['pdf.fonttype'] = 42
 plt.rcParams['ps.fonttype']  = 42
 
 rng = np.random.default_rng(0)   # jitter for panels B and C
-fig, axes = plt.subplots(1, 3, figsize=(14, 4.2), gridspec_kw={'width_ratios': [1.0, 1.2, 1.15]})
+fig, axes = plt.subplots(1, 4, figsize=(17.5, 4.2), gridspec_kw={'width_ratios': [1.0, 1.2, 1.15, 0.95]})
 
 # Panel A: single-row dot plot of the stratified enrichment
 ax = axes[0]
@@ -375,38 +410,55 @@ ax.set_title(f'Regulon activity along the {primed_order[0]}\u2013{primed_order[-
              f'$p$ = {rho_p:.1e})', fontsize=9)
 ax.spines[['top', 'right']].set_visible(False)
 
-# Panel C: log2FC by gene group. The archetype boxes are subsets of the first box, and are
-# tiny (7 / 3 / 1 genes), so no test is drawn — points and medians only.
-ax = axes[2]
-ax.axhline(0, color='gray', linewidth=0.8, linestyle='--', zorder=1)
-for pos, (lab, genes, color) in enumerate(panel_c):
-    vals = fc.loc[genes, DE_LOG2FC_COL].values
-    if len(vals) >= MIN_N_FOR_BOX:
-        bp = ax.boxplot(vals, positions=[pos], widths=0.55, showfliers=False,
-                        patch_artist=True, zorder=2)
-        bp['boxes'][0].set(facecolor='white', edgecolor=color, alpha=0.9, linewidth=1.2)
-        for key in ('whiskers', 'caps'):
-            for line in bp[key]:
-                line.set(color=color, linewidth=1.2)
-        bp['medians'][0].set(color='black', linewidth=1.5)
-    else:   # too few genes for a box to mean anything — draw the median as a bare line
-        ax.hlines(np.median(vals), pos - 0.27, pos + 0.27, color='black', linewidth=1.5, zorder=2)
-    low = fc.loc[genes, 'low_detection'].values
-    jitter = pos + rng.uniform(-0.16, 0.16, len(vals))
-    ax.scatter(jitter[~low], vals[~low], s=16, color=color,
-               alpha=0.85, edgecolor='white', linewidths=0.4, zorder=3)
-    ax.scatter(jitter[low], vals[low], s=22, facecolor='none', edgecolor=color,
-               linewidths=1.0, zorder=3)
+def _log2fc_panel(ax, groups, title, caption=None):
+    """Boxplot of log2FC per gene group; groups under MIN_N_FOR_BOX get a bare median line, and
+    genes below the detection floor are drawn as open markers."""
+    ax.axhline(0, color='gray', linewidth=0.8, linestyle='--', zorder=1)
+    for pos, (lab, genes, color) in enumerate(groups):
+        vals = fc.loc[genes, DE_LOG2FC_COL].values
+        if len(vals) >= MIN_N_FOR_BOX:
+            bp = ax.boxplot(vals, positions=[pos], widths=0.55, showfliers=False,
+                            patch_artist=True, zorder=2)
+            bp['boxes'][0].set(facecolor='white', edgecolor=color, alpha=0.9, linewidth=1.2)
+            for key in ('whiskers', 'caps'):
+                for line in bp[key]:
+                    line.set(color=color, linewidth=1.2)
+            bp['medians'][0].set(color='black', linewidth=1.5)
+        else:   # too few genes for a box to mean anything — draw the median as a bare line
+            ax.hlines(np.median(vals), pos - 0.27, pos + 0.27, color='black',
+                      linewidth=1.5, zorder=2)
+        low = fc.loc[genes, 'low_detection'].values
+        jitter = pos + rng.uniform(-0.16, 0.16, len(vals))
+        point_size = 16 if len(vals) < 50 else 4
+        ax.scatter(jitter[~low], vals[~low], s=point_size, color=color,
+                   alpha=0.85 if len(vals) < 50 else 0.35, edgecolor='white',
+                   linewidths=0.4 if len(vals) < 50 else 0, zorder=3, rasterized=len(vals) >= 50)
+        ax.scatter(jitter[low], vals[low], s=point_size + 6, facecolor='none', edgecolor=color,
+                   linewidths=1.0, zorder=3)
+    ax.set_xticks(range(len(groups)))
+    ax.set_xticklabels([f'{lab}\nn = {len(genes)}' for lab, genes, _ in groups], fontsize=8)
+    ax.set_xlim(-0.6, len(groups) - 0.4)
+    ax.set_ylabel('log$_2$FC  (Cux2Cre / WT)')
+    ax.set_title(title, fontsize=9)
+    if caption:
+        ax.text(0.5, -0.27, caption, transform=ax.transAxes, ha='center', va='top',
+                fontsize=7, color='dimgray')
+    ax.spines[['top', 'right']].set_visible(False)
 
-ax.set_xticks(range(len(panel_c)))
-ax.set_xticklabels([f'{lab}\nn = {len(genes)}' for lab, genes, _ in panel_c], fontsize=8)
-ax.set_xlim(-0.6, len(panel_c) - 0.4)
-ax.set_ylabel('log$_2$FC  (Cux2Cre / WT)')
-ax.set_title(f'{REGULON} target response to Cux2Cre in L2/3\n'
-             f"(jainlab26, recomputed; A'/B'/C' boxes are subsets of the first)", fontsize=9)
-ax.text(0.5, -0.27, f'open marker: detected in <{MIN_FRAC_CELLS:.0%} of cells in both genotypes',
-        transform=ax.transAxes, ha='center', va='top', fontsize=7, color='dimgray')
-ax.spines[['top', 'right']].set_visible(False)
+
+OPEN_NOTE = f'open marker: detected in <{MIN_FRAC_CELLS:.0%} of cells in both genotypes'
+
+# Panel C: the regulon's targets and their archetype overlaps (subsets of the first box)
+_log2fc_panel(axes[2], panel_c,
+              f'{REGULON} target response to Cux2Cre in L2/3\n'
+              f"(jainlab26, recomputed; A'/B'/C' boxes are subsets of the first)",
+              caption=OPEN_NOTE)
+
+# Panel D: the full archetype marker sets, regardless of regulon membership
+_log2fc_panel(axes[3], panel_d,
+              f'All L2/3 archetype markers under Cux2Cre\n'
+              f'(disjoint sets; Kruskal-Wallis $p$ = {kw_d_p:.2g})',
+              caption=OPEN_NOTE)
 
 fig.tight_layout()
 fig.savefig(OUT_FIG, bbox_inches='tight', dpi=300)
